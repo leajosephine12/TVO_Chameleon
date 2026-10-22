@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TVO Capture</title>
+<style>
+  :root { --ink:#1F2933; --muted:#5B6675; --line:#CBD2DC; --bg:#E6EAF1; --card:#FFFFFF; --accent:#1F2933; --ok:#0B5A4F; --warn:#9A3412; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input { font:inherit; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline:3px solid #1D4ED8; outline-offset:2px; }
+  header { padding:14px 24px; background:var(--card); border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  h1 { margin:0; font-size:18px; }
+  header span { color:var(--muted); font-size:13px; }
+  main { max-width:1500px; margin:0 auto; padding:16px 24px 40px; display:flex; flex-direction:column; gap:16px; }
+  form { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .field { flex:1 1 420px; display:flex; flex-direction:column; gap:4px; }
+  label { font-weight:700; font-size:13px; }
+  input[type=url] { min-height:44px; padding:6px 12px; border:2px solid var(--ink); border-radius:8px; width:100%; }
+  button.primary { min-height:44px; padding:6px 22px; border-radius:8px; border:2px solid var(--accent); background:var(--accent); color:#fff; font-weight:700; cursor:pointer; }
+  button.primary[disabled] { opacity:.6; cursor:progress; }
+  .hint { color:var(--muted); font-size:13px; flex-basis:100%; margin:0; }
+  #status { min-height:1.4em; font-weight:700; }
+  #status.err { color:var(--warn); }
+  #log { margin:0; padding:0; list-style:none; color:var(--muted); font-size:13px; }
+  .layout { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .viewer { flex:1 1 760px; min-width:0; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .viewer .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 12px; background:#F1F3F7; border-bottom:1px solid var(--line); font-size:13px; }
+  .viewer .bar .url { flex:1 1 200px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+  .viewer .bar a { color:#1E3A8A; font-weight:700; }
+  .stage { overflow:hidden; background:#F0F3FA; }
+  .stage iframe { border:0; transform-origin:0 0; display:block; background:#fff; }
+  .empty { padding:48px 24px; text-align:center; color:var(--muted); }
+  aside { flex:0 0 340px; display:flex; flex-direction:column; gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .card h2 { margin:0 0 8px; font-size:13px; letter-spacing:.05em; color:var(--muted); }
+  dl { margin:0; display:grid; grid-template-columns:1fr auto; gap:4px 12px; font-size:14px; }
+  dt { color:var(--muted); } dd { margin:0; font-weight:700; text-align:right; }
+  ul.list { margin:0; padding-left:18px; font-size:13px; max-height:200px; overflow:auto; }
+  ul.history { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
+  ul.history button { width:100%; text-align:left; min-height:44px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
+  ul.history button[aria-pressed=true] { border:2px solid var(--ink); background:#F7F8FA; }
+  ul.history small { display:block; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>TVO Capture</h1>
+  <span>Paste a TVO Learn link to make a static copy you can edit on top of.</span>
+</header>
+<main>
+  <form id="form">
+    <div class="field">
+      <label for="url">TVO Learn link</label>
+      <input id="url" type="url" required placeholder="https://tvolearn.com/..." autocomplete="off">
+    </div>
+    <button class="primary" id="go" type="submit">Capture page</button>
+    <p class="hint" id="allowed">Only TVO Learn links are accepted.</p>
+  </form>
+
+  <div>
+    <div id="status" role="status" aria-live="polite"></div>
+    <ul id="log"></ul>
+  </div>
+
+  <div class="layout">
+    <section class="viewer" aria-label="Captured copy">
+      <div class="bar" id="bar" hidden>
+        <span class="url" id="barUrl"></span>
+        <a id="openLink" href="#" target="_blank" rel="noopener">Open full size</a>
+        <a id="shotLink" href="#" target="_blank" rel="noopener">Original screenshot</a>
+      </div>
+      <div class="stage" id="stage" hidden><iframe id="frame" title="Captured copy of the page" sandbox="allow-same-origin"></iframe></div>
+      <div class="empty" id="empty">No page captured yet.</div>
+    </section>
+
+    <aside>
+      <div class="card" id="summary" hidden>
+        <h2>THIS CAPTURE</h2>
+        <dl id="stats"></dl>
+      </div>
+      <div class="card" id="phCard" hidden>
+        <h2>PLACEHOLDERS AND GAPS</h2>
+        <ul class="list" id="placeholders"></ul>
+      </div>
+      <div class="card">
+        <h2>EARLIER CAPTURES</h2>
+        <ul class="history" id="history"></ul>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var current = null;
+
+  fetch('/api/config').then(function (r) { return r.json(); }).then(function (c) {
+    $('allowed').textContent = 'Only links on ' + c.allowedHosts.join(', ') + ' are accepted. The copy has scripts removed and is stored on this server.';
+  }).catch(function () {});
+
+  function setStatus(msg, isErr) {
+    $('status').textContent = msg || '';
+    $('status').className = isErr ? 'err' : '';
+  }
+
+  function fit() {
+    var stage = $('stage'), frame = $('frame');
+    if (stage.hidden || !current) return;
+    var w = current.viewport.width;
+    var scale = Math.min(1, stage.clientWidth / w);
+    frame.style.width = w + 'px';
+    frame.style.height = current.docHeight + 'px';
+    frame.style.transform = 'scale(' + scale + ')';
+    stage.style.height = Math.min(current.docHeight * scale, 900) + 'px';
+    stage.style.overflowY = current.docHeight * scale > 900 ? 'auto' : 'hidden';
+    // Scale inside a scroll box: wrap by sizing the iframe's layout box.
+    frame.style.marginBottom = (current.docHeight * scale - current.docHeight) + 'px';
+    frame.style.marginRight = (w * scale - w) + 'px';
+  }
+  window.addEventListener('resize', fit);
+
+  function show(meta) {
+    current = meta;
+    var base = '/snapshots/' + meta.id + '/';
+    $('frame').src = base + 'index.html';
+    $('empty').hidden = true;
+    $('stage').hidden = false;
+    $('bar').hidden = false;
+    $('barUrl').textContent = meta.sourceUrl;
+    $('openLink').href = base + 'index.html';
+    $('shotLink').href = base + 'screenshot.png';
+    fit();
+
+    var s = meta.stats;
+    var rows = [
+      ['Title', meta.title || '(none)'],
+      ['Captured', new Date(meta.capturedAt).toLocaleString()],
+      ['Elements with ids', meta.elements],
+      ['Assets saved', meta.assets],
+      ['Images', s.images - s.imagesMissing + ' of ' + s.images],
+      ['Stylesheets', s.stylesheets],
+      ['Scripts removed', s.removed.scripts]
+    ];
+    var dl = $('stats');
+    dl.innerHTML = '';
+    rows.forEach(function (r) {
+      var dt = document.createElement('dt'); dt.textContent = r[0];
+      var dd = document.createElement('dd'); dd.textContent = r[1];
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+    $('summary').hidden = false;
+
+    var items = s.placeholders.slice();
+    if (s.cssAssetsMissing) items.push(s.cssAssetsMissing + ' style asset(s) not captured and left blank');
+    if (s.stylesheetsMissing) items.push(s.stylesheetsMissing + ' stylesheet(s) not captured');
+    if (s.removed.cookieBanners) items.push('Cookie banner removed');
+    (meta.warnings || []).forEach(function (w) { items.push(w); });
+    var ul = $('placeholders');
+    ul.innerHTML = '';
+    items.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    $('phCard').hidden = items.length === 0;
+    loadHistory();
+  }
+
+  function loadHistory() {
+    fetch('/api/snapshots').then(function (r) { return r.json(); }).then(function (list) {
+      var ul = $('history');
+      ul.innerHTML = '';
+      if (!list.length) { ul.innerHTML = '<li style="color:#5B6675;font-size:13px">Nothing yet.</li>'; return; }
+      list.forEach(function (m) {
+        var li = document.createElement('li');
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('aria-pressed', current && current.id === m.id ? 'true' : 'false');
+        b.innerHTML = '<span></span><small></small>';
+        b.firstChild.textContent = m.title || m.sourceUrl;
+        b.lastChild.textContent = new Date(m.capturedAt).toLocaleString();
+        b.addEventListener('click', function () { show(m); });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+    });
+  }
+
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var url = $('url').value.trim();
+    $('go').disabled = true;
+    $('log').innerHTML = '';
+    setStatus('Starting…');
+    fetch('/api/capture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.error || 'Could not start the capture.');
+        poll(res.j.jobId);
+      })
+      .catch(function (err) { setStatus(err.message, true); $('go').disabled = false; });
+  });
+
+  function poll(jobId) {
+    fetch('/api/jobs/' + jobId).then(function (r) { return r.json(); }).then(function (job) {
+      var log = $('log');
+      log.innerHTML = '';
+      job.log.forEach(function (m) { var li = document.createElement('li'); li.textContent = m; log.appendChild(li); });
+      if (job.status === 'running') {
+        setStatus('Capturing…');
+        setTimeout(function () { poll(jobId); }, 800);
+      } else if (job.status === 'done') {
+        setStatus('Captured.');
+        $('go').disabled = false;
+        show(job.snapshot);
+      } else {
+        setStatus(job.error || 'The capture failed.', true);
+        $('go').disabled = false;
+      }
+    }).catch(function () { setStatus('Lost contact with the server.', true); $('go').disabled = false; });
+  }
+
+  loadHistory();
+})();
+</script>
+</body>
+</html>
