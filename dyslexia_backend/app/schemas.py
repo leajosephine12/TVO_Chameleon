@@ -35,6 +35,7 @@ class GuidelinesResponse(BaseModel):
     guidelines: list[Guideline]
 
 
+# returns a list of recommendation
 class AnalyzeResult(BaseModel):
     level: int = 1
     recommendations: list[Recommendation]
