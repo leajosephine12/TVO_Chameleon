@@ -13,10 +13,9 @@ from .guards import (
     check_original_is_quoted,
     check_rationale_numbers,
     check_status_pending,
-    check_unique_ids,
 )
 from .prompts import build_messages
-from .runner import run_recommendation_task
+from .runner import renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
 TASK = "text_recs"
@@ -52,17 +51,18 @@ def generate_text_recommendations(
     blocks: list[dict],
     findings: dict,
     *,
+    start_id: int = 1,
     max_retries: int | None = None,
     config: ModelConfig | None = None,
     transport=None,
     caller=call_model,
 ) -> list[Recommendation]:
-    """Return text recommendations, or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data."""
+    """Return text recommendations (ids r{start_id}, r{start_id+1}, ...), or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data."""
     _validate_input(blocks)
     config = config or ModelConfig.from_env()
     block_text = {b["block_id"]: b["text"] for b in blocks}
 
-    checks = [check_unique_ids, check_status_pending]
+    checks = [check_status_pending]
     if not config.mock:
         # The mock returns a fixed reply that ignores the input, so checks that compare against the
         # input only make sense for a real model.
@@ -74,7 +74,8 @@ def generate_text_recommendations(
         ]
 
     messages = build_messages(INSTRUCTIONS, RecommendationList, {"blocks": blocks, "findings": findings})
-    return run_recommendation_task(
+    recs = run_recommendation_task(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
+    return renumber(recs, start_id)

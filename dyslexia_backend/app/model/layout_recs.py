@@ -12,12 +12,14 @@ from functools import partial
 from ..guidelines import BODY_FONT_PX, HEADING_SCALE, LEVEL1_GUIDELINES, LINE_HEIGHT, MAX_LINE_CH
 from .client import call_model
 from .config import ModelConfig
-from .guards import check_known_blocks, check_rationale_numbers, check_status_pending, check_unique_ids
+from .adapted_ui_spec import parse_css
+from .guards import check_known_blocks, check_rationale_numbers, check_status_pending
 from .prompts import attach_image, build_messages
-from .runner import run_recommendation_task
+from .runner import renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
 TASK = "layout_recs"
+CSS_TYPES = ("font_size", "line_spacing", "line_length", "heading_size")  # their suggestion must be a CSS declaration
 _RULE_IDS = ("L1.1.2", "L1.1.3", "L1.1.6", "L1.3.2")  # font size, heading size, line spacing, line length
 
 
@@ -56,6 +58,18 @@ Field guide:
 Only report real problems. If the layout already meets the targets, return {"recommendations": []}."""
 
 
+def check_css_suggestions(recs: list[Recommendation]) -> list[str]:
+    """For the CSS types, `suggestion` must be a real, allowed CSS declaration (call 3 turns it into a style change)."""
+    problems = []
+    for r in recs:
+        if r.type in CSS_TYPES:
+            try:
+                parse_css(r.suggestion)
+            except ValueError as e:
+                problems.append(f"{r.id}: for type '{r.type}' the suggestion must be CSS like 'line-height: 1.6'. {e}")
+    return problems
+
+
 def _validate_metrics(metrics: dict) -> None:
     blocks = metrics.get("blocks") if isinstance(metrics, dict) else None
     if not blocks or not all(isinstance(b, dict) and b.get("block_id") for b in blocks):
@@ -85,6 +99,7 @@ def generate_layout_recommendations(
     screenshot: bytes | str,
     metrics: dict,
     *,
+    start_id: int = 1,
     max_retries: int | None = None,
     config: ModelConfig | None = None,
     transport=None,
@@ -96,13 +111,14 @@ def generate_layout_recommendations(
     config = config or ModelConfig.from_env()
     findings = {**metrics, "targets": layout_targets()}  # what the number check is run against
 
-    checks = [check_unique_ids, check_status_pending]
+    checks = [check_status_pending]
     if not config.mock:  # the mock ignores its input, so input-matching checks only apply to a real model
         block_ids = {b["block_id"] for b in metrics["blocks"]} | {"page"}
-        checks += [partial(check_known_blocks, block_ids=block_ids), partial(check_rationale_numbers, findings=findings)]
+        checks += [partial(check_known_blocks, block_ids=block_ids), partial(check_rationale_numbers, findings=findings), check_css_suggestions]
 
     messages = attach_image(build_messages(INSTRUCTIONS, RecommendationList, findings), data_url)
-    return run_recommendation_task(
+    recs = run_recommendation_task(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
+    return renumber(recs, start_id)  # pass start_id=len(text_recs)+1 so ids stay unique across calls 1 and 2

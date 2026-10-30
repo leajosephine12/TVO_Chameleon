@@ -76,7 +76,7 @@ def test_mock_mode_works_for_any_page(monkeypatch):
 def test_good_reply_and_image_is_sent_in_openai_vision_format():
     fake = FakeModel(reply(rec()))
     out = gen(fake)
-    assert type(out) is list and out[0].id == "r3"
+    assert type(out) is list and out[0].id == "r1"
     content = fake.calls[0][-1]["content"]
     assert content[0]["type"] == "text" and "<page_data>" in content[0]["text"]
     assert content[1]["type"] == "image_url" and content[1]["image_url"]["url"].startswith("data:image/png;base64,")
@@ -132,5 +132,17 @@ def test_saved_layout_samples_match_the_mock(monkeypatch):
     monkeypatch.setenv("MODEL_MOCK", "1")
     saved_in = json.loads((SAMPLES / "layout_recs_input.json").read_text(encoding="utf-8"))
     saved_out = json.loads((SAMPLES / "layout_recs_output.json").read_text(encoding="utf-8"))
-    fresh = generate_layout_recommendations(TINY_PNG, saved_in["metrics"])
+    fresh = generate_layout_recommendations(TINY_PNG, saved_in["metrics"], start_id=3)
     assert saved_out == [r.model_dump() for r in fresh]
+
+
+def test_css_types_must_have_a_real_css_suggestion():
+    bad = rec(type="font_size", original="font_size_px: 14", suggestion="font_size_px: 18", rationale="font is 14 px")
+    fake = FakeModel(reply(bad), reply(rec()))
+    gen(fake)
+    assert "must be CSS" in fake.calls[1][-1]["content"] and "font_size_px" in fake.calls[1][-1]["content"]
+
+
+def test_non_css_types_may_have_plain_english_suggestions():
+    steps = rec(id="r8", type="break_into_steps", original="one dense paragraph", suggestion="Break this into numbered steps.", rationale="dense block")
+    assert gen(FakeModel(reply(steps)))[0].type == "break_into_steps"

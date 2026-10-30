@@ -86,6 +86,8 @@ def run_task(
                 log.info("%s model_call=%.2fs outcome=ok total=%.2fs", label, call_secs, time.perf_counter() - started)
                 return parsed
         log.info("%s model_call=%.2fs outcome=invalid (%d problem%s)", label, call_secs, len(problems), "" if len(problems) == 1 else "s")
+        for problem in problems[:3]:
+            log.info("    rejected because: %s", problem[:300])
         messages += [{"role": "assistant", "content": reply}, {"role": "user", "content": _feedback(problems)}]
     log.warning("task=%s gave up after %d attempts, total=%.2fs", task, attempts, time.perf_counter() - started)
     raise ModelOutputError(task, attempts, problems)
@@ -99,3 +101,8 @@ def run_recommendation_task(
     """Like run_task for calls 1 and 2, but returns a plain list[Recommendation] (the wrapper is removed here)."""
     wrapped = tuple((lambda parsed, c=c: c(parsed.recommendations)) for c in checks)
     return run_task(schema=RecommendationList, checks=wrapped, **kwargs).recommendations
+
+
+def renumber(recs: list[Recommendation], start: int = 1) -> list[Recommendation]:
+    """Give recommendations ids r{start}, r{start+1}, ... The code, not the model, owns ids (models repeat them)."""
+    return [r.model_copy(update={"id": f"r{start + i}"}) for i, r in enumerate(recs)]

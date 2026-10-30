@@ -179,7 +179,7 @@ def test_each_attempt_is_logged_with_duration_and_retry_flag(caplog):
     import logging
     caplog.set_level(logging.INFO, logger="app.model")
     run(FakeModel("garbage", good()))
-    lines = [r.getMessage() for r in caplog.records]
+    lines = [r.getMessage() for r in caplog.records if "attempt=" in r.getMessage()]
     assert "attempt=1/3 retry=False" in lines[0] and "outcome=invalid" in lines[0] and "model_call=" in lines[0]
     assert "attempt=2/3 retry=True" in lines[1] and "outcome=ok" in lines[1] and "total=" in lines[1]
 
@@ -190,3 +190,10 @@ def test_giving_up_is_logged(caplog):
     with pytest.raises(ModelOutputError):
         run(FakeModel("garbage"), max_retries=1)
     assert any("gave up after 2 attempts" in r.getMessage() for r in caplog.records)
+
+
+def test_rejection_reasons_are_logged(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="app.model")
+    run(FakeModel(good(rationale="99 words"), good()))
+    assert any("rejected because" in r.getMessage() and "99" in r.getMessage() for r in caplog.records)

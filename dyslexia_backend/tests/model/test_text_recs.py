@@ -59,6 +59,13 @@ def test_mock_mode_works_for_any_page(monkeypatch):
 
 # ---- real-mode path with a fake model ----
 
+def test_ids_are_assigned_by_code_not_the_model():
+    r2 = rec(id="r1", block_id="p-2", original="their parents earn a limited income.", suggestion="their parents do not earn much money.", rationale="hard phrase")
+    fake = FakeModel(reply(rec(id="r1"), r2))
+    out = gen(fake, start_id=7)
+    assert [r.id for r in out] == ["r7", "r8"] and len(fake.calls) == 1
+
+
 def test_good_reply_is_returned_as_a_list():
     out = gen(FakeModel(reply(rec())))
     assert type(out) is list and out[0].id == "r1"

@@ -31,11 +31,11 @@ if __name__ == "__main__":
     save("text_recs_input.json", {"blocks": SAMPLE_BLOCKS, "findings": FAKE_FINDINGS})
     save("text_recs_output.json", [r.model_dump() for r in generate_text_recommendations(SAMPLE_BLOCKS, FAKE_FINDINGS)])
     save("layout_recs_input.json", {"screenshot": "(omitted: a tiny placeholder image is used)", "metrics": FAKE_LAYOUT_METRICS})
-    save("layout_recs_output.json", [r.model_dump() for r in generate_layout_recommendations(TINY_PNG, FAKE_LAYOUT_METRICS)])
+    save("layout_recs_output.json", [r.model_dump() for r in generate_layout_recommendations(TINY_PNG, FAKE_LAYOUT_METRICS, start_id=3)])
 
     # call 3 is plain code: the user accepts the mock recommendations, the code builds the spec
     text = [r.model_copy(update={"status": "accepted"}) for r in generate_text_recommendations(SAMPLE_BLOCKS, FAKE_FINDINGS)]
-    layout = [r.model_copy(update={"status": "accepted"}) for r in generate_layout_recommendations(TINY_PNG, FAKE_LAYOUT_METRICS)]
+    layout = [r.model_copy(update={"status": "accepted"}) for r in generate_layout_recommendations(TINY_PNG, FAKE_LAYOUT_METRICS, start_id=3)]
     save("adapted_ui_input.json", {
         "blocks": SAMPLE_BLOCKS,
         "accepted_text_recommendations": [r.model_dump() for r in text],

@@ -29,7 +29,7 @@ def test_smoke_test_works_in_mock_mode():
 
 def test_smoke_test_full_and_vision_in_mock_mode_with_timing_logs():
     code, out = smoke("--full", "--vision", MODEL_MOCK="1")
-    assert code == 0 and "[r1]" in out and "[r3]" in out
+    assert code == 0 and "[r1]" in out and "line_spacing" in out
     assert "attempt=1/3 retry=False" in out and "outcome=ok" in out  # per-attempt timing is shown
 
 
