@@ -27,7 +27,7 @@ You are given text blocks and findings from a readability tool: long sentences, 
 For each problem listed in the findings, write one recommendation that rewrites ONLY the affected sentence or phrase in simpler words, usually by splitting a long sentence into shorter ones or swapping a hard word for an easier one.
 
 Field guide:
-- id: "r1", "r2", ... unique.
+- id: "r1", "r2", ... (the system renumbers them).
 - block_id: the block the text came from.
 - type: "long_sentence", "difficult_word" or "reading_level".
 - original: the affected text, copied exactly from the block.
@@ -36,7 +36,12 @@ Field guide:
 - evidence: where the rule comes from, for example "readability tool / W3C COGA".
 - severity: "high" for a problem far beyond the target, "medium" for a clear problem, "low" for a small one.
 - status: "pending".
-Only write recommendations for problems that appear in the findings. If there are no problems, return {"recommendations": []}."""
+Only write recommendations for problems that appear in the findings. If there are no problems, return {"recommendations": []}.
+
+Keep the reply short, because a long reply is slow:
+- At most 4 recommendations: every long sentence first, then the hardest words if there is room.
+- 'rationale' is at most 15 words.
+- Write compact JSON: no indentation and no blank lines."""
 
 
 def _validate_input(blocks: list[dict]) -> None:

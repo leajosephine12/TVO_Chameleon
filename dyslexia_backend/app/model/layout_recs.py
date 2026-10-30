@@ -43,15 +43,21 @@ INSTRUCTIONS = """\
 You help make a web page layout easier to read for students with dyslexia.
 You get a screenshot of the page and measurements of its text blocks (font size, line height, line length), plus reference targets.
 
-Compare each block's measurements with the targets and look at the screenshot for crowded or hard-to-scan areas. Write one recommendation per problem, for example:
-- type "font_size", "line_spacing", "line_length" or "heading_size" when a measurement misses a target. In 'suggestion' give the fix as CSS using a value from "applied_by_adapter".
+Compare each block's measurements with the targets and look at the screenshot for crowded or hard-to-scan areas. Write one recommendation per PROBLEM, not per block: if several blocks share a problem, report it once with the first affected block_id, or "page" if every block is affected.
+
+For a measurement that misses a target, use exactly these types and write 'original' and 'suggestion' as real CSS (property names with hyphens, units included):
+- type "font_size": original "font-size: 14px", suggestion "font-size: 18px"
+- type "line_spacing": original "line-height: 1.2", suggestion "line-height: 1.6"
+- type "line_length": original "max-width: 96ch", suggestion "max-width: 65ch"
+- type "heading_size": original "font-size: 1em", suggestion "font-size: 1.2em"
+Take the suggested values from "applied_by_adapter" and the original values from the measurements.
+Other types, with a plain-English suggestion (no CSS needed):
 - type "break_into_steps" when the screenshot shows a dense block that is really a sequence of steps or items.
 - type "more_spacing" when the screenshot looks cramped.
 
 Field guide:
-- id: "r1", "r2", ... unique.
+- id: "r1", "r2", ... (the system renumbers them).
 - block_id: a block from the measurements, or "page" for something page-wide.
-- original: what the page does now, for example "line-height: 1.2" (copy the measured value).
 - rationale: one short sentence. If you mention a number, copy it from the measurements or targets exactly, for example "line spacing is 1.2; target >= 1.5".
 - evidence: the rule, for example "DOM metrics / guideline L1.1.6".
 - severity: "high", "medium" or "low". status: "pending".

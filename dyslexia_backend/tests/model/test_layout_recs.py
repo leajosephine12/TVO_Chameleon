@@ -146,3 +146,17 @@ def test_css_types_must_have_a_real_css_suggestion():
 def test_non_css_types_may_have_plain_english_suggestions():
     steps = rec(id="r8", type="break_into_steps", original="one dense paragraph", suggestion="Break this into numbered steps.", rationale="dense block")
     assert gen(FakeModel(reply(steps)))[0].type == "break_into_steps"
+
+
+def test_prompt_shows_exact_css_formats():
+    fake = FakeModel(reply(rec()))
+    gen(fake)
+    text = fake.calls[0][0]["content"]
+    assert "line-height: 1.6" in text and "max-width: 65ch" in text and "once" in text
+
+
+def test_ids_are_assigned_by_code_so_duplicates_from_the_model_do_not_matter():
+    dup = [rec(id="r1"), rec(id="r1", type="font_size", original="font-size: 14px", suggestion="font-size: 18px", rationale="font is 14 px")]
+    fake = FakeModel(reply(*dup))
+    out = gen(fake, start_id=5)
+    assert [r.id for r in out] == ["r5", "r6"] and len(fake.calls) == 1  # no retry spent on ids
