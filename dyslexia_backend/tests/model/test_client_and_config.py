@@ -16,7 +16,7 @@ MSGS = [{"role": "user", "content": "hi"}]
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for k in ("MODEL_MOCK", "MODEL_BASE_URL", "MODEL_NAME", "MODEL_API_KEY", "MODEL_TIMEOUT"):
+    for k in ("MODEL_MOCK", "MODEL_BASE_URL", "MODEL_NAME", "MODEL_API_KEY", "MODEL_TIMEOUT", "MODEL_REASONING_EFFORT"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -154,3 +154,23 @@ def test_importing_model_package_does_not_need_fastmcp():
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=BACKEND_DIR, capture_output=True, text=True)
     assert out.returncode == 0 and "ok" in out.stdout, out.stderr
+
+
+def test_reasoning_effort_is_sent_only_when_set(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "m")
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return ok_reply()
+
+    call_model(MSGS, task="text_recs", transport=fake_server(handler))
+    monkeypatch.setenv("MODEL_REASONING_EFFORT", "None")
+    call_model(MSGS, task="text_recs", transport=fake_server(handler))
+    assert "reasoning_effort" not in bodies[0] and bodies[1]["reasoning_effort"] == "none"
+
+
+def test_bad_reasoning_effort_is_a_clear_error(monkeypatch):
+    monkeypatch.setenv("MODEL_REASONING_EFFORT", "max")
+    with pytest.raises(ModelConfigError, match="MODEL_REASONING_EFFORT"):
+        ModelConfig.from_env()

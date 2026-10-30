@@ -139,6 +139,7 @@ A value typed in PowerShell beats the file. `.env` is in `.gitignore`; never com
 | `MODEL_NAME` | Model to ask for (required in real mode) | none |
 | `MODEL_API_KEY` | Optional key, sent as `Authorization: Bearer ...`. Environment only | none |
 | `MODEL_TIMEOUT` | Seconds to wait for one reply | `120` |
+| `MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`, sent as `reasoning_effort`. **Use `none` with Gemma 4 on Ollama** (it is a "thinking" model; otherwise each call can take 9+ minutes on a CPU laptop) | not sent |
 | `MODEL_MAX_RETRIES` | Extra attempts after an invalid reply (`2` means up to 3 calls) | `2` |
 
 Later, for RunPod: set `MODEL_BASE_URL` to its OpenAI-compatible URL, `MODEL_NAME` to the served model, and `MODEL_API_KEY` to your key (in the environment, never in code).

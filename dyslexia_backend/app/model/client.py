@@ -34,6 +34,8 @@ def call_model(
     config.require_real()
     headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
     payload = {"model": config.model_name, "messages": messages, "temperature": 0}
+    if config.reasoning_effort:
+        payload["reasoning_effort"] = config.reasoning_effort
     try:
         with httpx.Client(timeout=config.timeout, transport=transport) as http:
             response = http.post(f"{config.base_url}/chat/completions", json=payload, headers=headers)
