@@ -142,26 +142,53 @@ async function settleFrame(frame) {
 }
 
 
-// Open every accordion in an embedded frame (a static copy cannot toggle them).
-// Uses the page's own "Expand All" button when there is one, otherwise clicks
-// each collapsed heading, and opens <details> elements. Returns how many it opened.
-export async function expandAll(frame) {
-    return frame.evaluate(async () => {
+// Open every accordion in a page or embedded frame (a static copy cannot toggle
+// them). Uses the page's own "Expand All" button when there is one, otherwise
+// clicks each collapsed heading, and opens <details> elements. Returns how many
+// it opened.
+//
+// `strict` is used for the main page, where menus and drawers also use
+// aria-expanded: it clicks only buttons that control a real panel and are not
+// inside navigation, a header or a dialog, and never follows links.
+export async function expandAll(frame, { strict = false } = {}) {
+    return frame.evaluate(async ({ strict }) => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         let opened = 0;
+
+        const isAccordionHeading = (el) => {
+            if (!strict) return el.matches('button, [role="button"], summary, a');
+            return el.matches('button, [role="button"], summary')
+                && !el.hasAttribute('aria-haspopup')
+                && !el.closest('nav, header, dialog, [role="navigation"], [role="menu"], [role="dialog"]')
+                && !!document.getElementById(el.getAttribute('aria-controls') || '');
+        };
+
         document.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; opened++; });
+
         const all = [...document.querySelectorAll('button, a, [role="button"]')]
             .find((b) => /^\s*expand all\s*$/i.test(b.textContent || '') && !b.disabled && b.getAttribute('aria-disabled') !== 'true');
         if (all) {
             all.click(); opened++;
             await wait(600);
         }
-        const heads = [...document.querySelectorAll('[aria-expanded="false"]')].filter((h) => h.matches('button, [role="button"], summary, a'));
-        for (const h of heads.slice(0, 80)) {
+
+        // A panel with a data-src is a lazy lesson preview: the page builds it on click
+        // but destroys the previous one, so these are built directly further down.
+        const isLazyPreview = (heading) => {
+            const panel = document.getElementById(heading.getAttribute('aria-controls') || '');
+            return !!panel && panel.hasAttribute('data-src');
+        };
+
+        // Click each collapsed heading so the page loads whatever it loads on opening.
+        const heads = [...document.querySelectorAll('[aria-expanded="false"]')]
+            .filter(isAccordionHeading)
+            .filter((h) => !isLazyPreview(h));
+        for (const h of heads.slice(0, 200)) {
             try { h.click(); opened++; } catch { /* ignore */ }
             await wait(80);
         }
-        await wait(300);
+        await wait(500);
+
         // AMP accordions (amp-accordion): a section is open when it has the
         // `expanded` attribute. If the click did not do it, set it directly.
         document.querySelectorAll('amp-accordion section:not([expanded])').forEach((sec) => {
@@ -170,13 +197,65 @@ export async function expandAll(frame) {
             if (hd) hd.setAttribute('aria-expanded', 'true');
             opened++;
         });
-        // Panels that are still marked hidden after the clicks.
+
+        // Some accordions only keep one section open at a time, so earlier clicks
+        // may have closed sections again. What they loaded is still in the page:
+        // open every heading that is still closed.
         document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach((h) => {
+            if (!isAccordionHeading(h)) return;
             const p = document.getElementById(h.getAttribute('aria-controls'));
-            if (p && p.hasAttribute('hidden')) { p.removeAttribute('hidden'); opened++; }
+            if (!p) return;
+            h.setAttribute('aria-expanded', 'true');
+            p.removeAttribute('hidden');
+            opened++;
+        });
+
+        // Lesson previews: every panel with a data-src gets one iframe aimed at that lesson.
+        // The page may ship the iframe already (empty, or pointing at the wrong place), so an
+        // existing one is reused; otherwise one is built, copying the look of a sibling.
+        const sample = document.querySelector('[role="region"][data-src] iframe');
+        document.querySelectorAll('[role="region"][data-src]').forEach((panel) => {
+            let frame = panel.querySelector('iframe');
+            if (!frame) {
+                frame = document.createElement('iframe');
+                if (sample) {
+                    [...sample.attributes].forEach((a) => frame.setAttribute(a.name, a.value));
+                } else {
+                    frame.setAttribute('title', 'Course Preview');
+                    frame.setAttribute('width', '100%');
+                    frame.setAttribute('height', '100%');
+                    frame.setAttribute('frameborder', '0');
+                    frame.setAttribute('style', 'position:absolute; top:0; left:0');
+                    frame.className = 'preview_iframe';
+                }
+                frame.id = panel.id ? panel.id.replace(/_panel$/, '') + '_iframe' : '';
+                panel.appendChild(frame);
+            }
+            // Drop any src so the capture can load the previews one at a time (see loadLazyFrame).
+            frame.removeAttribute('src');
+            frame.setAttribute('data-lazy-src', panel.getAttribute('data-src'));
+            panel.removeAttribute('hidden');
+            const heading = document.getElementById(panel.getAttribute('aria-labelledby') || '');
+            if (heading) heading.setAttribute('aria-expanded', 'true');
+            opened++;
         });
         return opened;
-    }).catch(() => 0);
+    }, { strict }).catch(() => 0);
+}
+
+// Starts loading a frame that was built without a src (a lazy lesson preview) and waits
+// for it to leave about:blank. Loading these one at a time keeps a lesson server that
+// copes badly with parallel requests happy; a failed load is retried twice.
+async function loadLazyFrame(handle, source) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        await handle.evaluate((el, src) => { el.removeAttribute('data-lazy-src'); el.setAttribute('src', 'about:blank'); el.setAttribute('src', src); }, source);
+        const frame = await handle.contentFrame();
+        if (!frame) return null;
+        for (let t = 0; t < 40 && (frame.url() === 'about:blank'); t++) await sleep(400);
+        if (!frame.url().startsWith('chrome-error:') && frame.url() !== 'about:blank') return frame;
+        await sleep(1500);
+    }
+    return null;
 }
 
 // Runs inside a page or frame: every file its inline styles, images and
@@ -298,6 +377,16 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
         await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => { });
         await page.waitForTimeout(600);
 
+        // ---- The page's own accordions (course units and lesson previews) ------
+        // They load their content when opened, so open them before anything is saved.
+        const pageUrlBefore = page.url();
+        const pageOpened = await expandAll(page.mainFrame(), { strict: true });
+        if (pageOpened) {
+            log('Opened ' + pageOpened + ' collapsed section(s) on the page');
+            await settleFrame(page.mainFrame());
+        }
+        if (page.url() !== pageUrlBefore) warn('The page navigated while opening its sections; the copy may be incomplete.');
+
         // ---- Embedded frames: load them fully before anything is saved -------
         await page.$$eval('iframe', (els) => els.forEach((e, i) => e.setAttribute('data-embed', String(i))));
         const handles = await page.$$('iframe');
@@ -306,15 +395,20 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
             try {
                 const box = await handles[i].boundingBox().catch(() => null);
                 if (!box || box.width < 24 || box.height < 24) continue; // tracking pixels, hidden helpers
-                const src = (await handles[i].getAttribute('src').catch(() => null)) || (await handles[i].getAttribute('data-src').catch(() => null)) || '';
+                const lazySource = await handles[i].getAttribute('data-lazy-src').catch(() => null);
+                const src = lazySource || (await handles[i].getAttribute('src').catch(() => null)) || (await handles[i].getAttribute('data-src').catch(() => null)) || '';
                 await handles[i].scrollIntoViewIfNeeded().catch(() => { });
-                const frame = await handles[i].contentFrame();
-                if (!frame) continue;
+                let frame = lazySource ? await loadLazyFrame(handles[i], lazySource) : await handles[i].contentFrame();
+                if (!frame) { warn('An embedded frame did not load' + (src ? ': ' + src : '') + '.'); continue; }
                 // A lazy frame starts on about:blank; give it time to navigate.
                 for (let t = 0; src && frame.url() === 'about:blank' && t < 20; t++) await sleep(400);
                 let host = '';
                 try { host = new URL(frame.url()).hostname; } catch { /* ignore */ }
-                if (!host || !frameHostAllowed(host)) continue;
+                if (!host || !frameHostAllowed(host)) {
+                    // A blocked host was already reported when its navigation was refused.
+                    if (!host || host === 'chromewebdata') warn('An embedded frame did not load' + (src ? ': ' + src : '') + '.');
+                    continue;
+                }
                 log('Waiting for embedded content from ' + host);
                 await settleFrame(frame);
                 const opened = await expandAll(frame);
@@ -322,10 +416,12 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
                     log('Opened ' + opened + ' collapsed section(s) in the embedded content');
                     await settleFrame(frame);
                 }
-                // Make the iframe tall enough to show everything it now holds.
+                // Make the iframe tall enough to show everything it now holds, unless it
+                // fills a panel of fixed size (the lesson previews): those scroll inside.
+                const fillsPanel = await handles[i].evaluate((el) => getComputedStyle(el).position === 'absolute').catch(() => false);
                 const need = await frame.evaluate(() => Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))).catch(() => 0);
                 const have = (await handles[i].boundingBox().catch(() => null) || { height: 0 }).height;
-                if (need > have + 4 && need < 20000) {
+                if (!fillsPanel && need > have + 4 && need < 20000) {
                     await handles[i].evaluate((el, h) => { el.style.height = h + 'px'; el.setAttribute('height', String(h)); }, need).catch(() => { });
                 }
                 frameJobs.push({ i, handle: handles[i], frame, host });
