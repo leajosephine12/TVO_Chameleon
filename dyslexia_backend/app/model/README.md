@@ -103,6 +103,7 @@ To use the mock from your own Python code, set `MODEL_MOCK=1` in the environment
    Remove-Item Env:MODEL_MOCK -ErrorAction SilentlyContinue
    $env:MODEL_BASE_URL = "http://localhost:11434/v1"
    $env:MODEL_NAME = "gemma4:e4b-it-qat"
+   $env:MODEL_REASONING_EFFORT = "none"
    python scripts/smoke_test.py
    ```
 
@@ -114,10 +115,29 @@ To use the mock from your own Python code, set `MODEL_MOCK=1` in the environment
    python scripts/smoke_test.py --vision    # call 2 with a tiny test image (the model must accept images)
    ```
 
+> **`MODEL_REASONING_EFFORT=none` matters.** Gemma 4 is a "thinking" model. Without it, the first real call took 9+ minutes on this laptop and was rejected.
+
 **Reading the timing lines.** Each attempt prints one line, for example
 `task=text_recs attempt=2/3 retry=True model_call=41.20s outcome=ok total=83.10s`.
-`retry=True` means the first reply was invalid and the model was asked again. If each `model_call` takes minutes, the model is too
+`retry=True` means the first reply was invalid and the model was asked again, and the `rejected because:` lines under it say why. If each `model_call` takes minutes, the model is too
 slow for this computer: try a smaller model, or set `MODEL_MAX_RETRIES=0` to stop after one attempt.
+
+### What it costs on a laptop (measured)
+
+Measured on the development laptop: Intel Iris Xe graphics (no usable GPU, so Ollama runs on the **CPU**), 13.7 GB RAM, Windows 11, Ollama 0.40.13,
+`MODEL_REASONING_EFFORT=none`, the two TVO paragraphs, one run each. Times will differ on other machines.
+
+| Call | `gemma4:e4b-it-qat` (6.1 GB) | `gemma4:e2b-it-qat` (4.3 GB) |
+|---|---|---|
+| Tiny request, model already loaded | 4 to 8 s | 3 to 4 s |
+| Tiny request, model not loaded yet | about 40 to 50 s | about 26 s |
+| Call 1, text (2 paragraphs) | 198 s, 0 retries, 7 recommendations | 102 s, 0 retries, 5 recommendations |
+| Call 2, layout (1x1 test image, fake metrics) | 198 s, 0 retries, 6 recommendations | 75 s, 0 retries, 3 recommendations |
+
+- Output length is what costs time (about 4 tokens per second on this CPU), not the prompt. Fewer or shorter recommendations means a faster call.
+- Ollama unloads an idle model after about 5 minutes, so the next call pays the loading time again.
+- e4b writes better rationales (it quotes the numbers, e.g. "24 words") and splits long sentences into two; e2b is twice as fast but its rationales are generic ("This sentence is too long") and it skipped some difficult words.
+- A real demo against these models needs minutes per page. For live demos use the mock or the saved `samples/`.
 
 ### Using a `.env` file instead of typing settings
 
@@ -296,7 +316,9 @@ result.skipped   # accepted recommendations that could not become a change, each
 
 **Environment**
 20. Ollama's OpenAI-compatible endpoint is `http://localhost:11434/v1` with `POST /chat/completions` and `GET /models`. Images are sent as `image_url` data URLs, which only works with an image-capable model.
-21. The Gemma 4 tag `gemma4:e4b-it-qat` was read from the Ollama website (it lists text and image input). **It has not been run on this computer.** Check `ollama list`. Nothing here has been tried against a real model yet, so prompts may need tuning on the first real run.
+21. Tried for real on the development laptop with `gemma4:e4b-it-qat` and `gemma4:e2b-it-qat` (see the timings above). Prompts were tuned after that first run (call 1 asks for at most 4 short recommendations, but e4b still returned 7; call 2 shows exact CSS formats). **Call 2 was only tested with a 1x1 white test image and fake metrics**, so how well the model reads a real screenshot is unknown. The model may use free-form `type` names (it wrote "typography" instead of "font_size"); the CSS check applies only to the types listed in `layout_recs.CSS_TYPES`.
+26. Recommendation ids are assigned by the code (`r1`, `r2`, ...), not by the model, because the model repeated ids and each repeat wasted a retry. Both calls accept `start_id`; pass `start_id=len(text_recs)+1` to the second one so ids stay unique within one analysis.
+27. Gemma 4 is a thinking model, so `MODEL_REASONING_EFFORT=none` is needed for it. `reasoning_effort` is a field the OpenAI-style API allows, and Ollama accepts it; another server might ignore or reject it, in which case leave the setting unset.
 22. API keys come only from environment variables; `.env` is in `.gitignore`; the smoke test never prints the key.
 23. This work is on the branch `model-integration`, based on `DyslexiaBackend` (not `main`). Teammates' later changes to `app/schemas.py` are not merged; if `Recommendation` changes, re-run the tests.
 24. Python 3.10+ syntax is used (`X | None`). `requirements-model.txt` is separate from the teammates' `requirements.txt` and does not need `fastmcp`.
