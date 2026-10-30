@@ -73,8 +73,8 @@ def run_task(
         parsed = None
         try:
             raw = extract_json(reply)
-            if isinstance(raw, list):  # small models often drop the wrapper object; accept a bare list
-                raw = {"recommendations": raw}
+            if isinstance(raw, list) and len(schema.model_fields) == 1:  # small models often drop the wrapper object
+                raw = {next(iter(schema.model_fields)): raw}
             parsed = schema.model_validate(raw)
         except json.JSONDecodeError as e:
             problems = [f"The reply was not valid JSON ({e.msg} at position {e.pos})."]

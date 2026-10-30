@@ -5,6 +5,8 @@ are FAKE sample data, not from a real analysis.
 """
 import json
 
+from .sample_data import SAMPLE_BLOCKS
+
 _TEXT = {
     "recommendations": [
         {
@@ -54,7 +56,19 @@ _LAYOUT = {
     ]
 }
 
-MOCK_RESPONSES = {"text_recs": _TEXT, "layout_recs": _LAYOUT}
+_P1 = SAMPLE_BLOCKS[0]["text"]
+_ADAPTED_UI = {
+    "changes": [
+        {
+            "block_id": "p-1",
+            "action": "replace_text",
+            "value": _P1.replace(_TEXT["recommendations"][0]["original"], _TEXT["recommendations"][0]["suggestion"]),
+        },
+        {"block_id": "p-1", "action": "set_style", "value": "line-height: 1.6"},
+    ]
+}
+
+MOCK_RESPONSES = {"text_recs": _TEXT, "layout_recs": _LAYOUT, "adapted_ui": _ADAPTED_UI}
 
 
 def mock_response(task: str) -> str:
