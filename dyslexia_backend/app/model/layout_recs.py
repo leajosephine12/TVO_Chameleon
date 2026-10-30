@@ -43,14 +43,20 @@ INSTRUCTIONS = """\
 You help make a web page layout easier to read for students with dyslexia.
 You get a screenshot of the page and measurements of its text blocks (font size, line height, line length), plus reference targets.
 
-Compare each block's measurements with the targets and look at the screenshot for crowded or hard-to-scan areas. Write one recommendation per PROBLEM, not per block: if several blocks share a problem, report it once with the first affected block_id, or "page" if every block is affected.
+A measurement is a PROBLEM only when it is outside the range given in "guideline_rules":
+- font size: a problem only if it is below the minimum of the range (a size inside the range, for example 16px, is fine; 14px is too small)
+- line height: a problem only if it is below the minimum ("at least ...")
+- line length: a problem only if it is above the maximum of the range
+Do not report a measurement that is inside its range, even if it differs from "applied_by_adapter". Those applied values are only what you write in 'suggestion' when there IS a problem.
+
+Compare each block's measurements with those ranges and look at the screenshot for crowded or hard-to-scan areas. Write one recommendation per PROBLEM, not per block: if several blocks share a problem, report it once with the first affected block_id, or "page" if every block is affected.
 
 For a measurement that misses a target, use exactly these types and write 'original' and 'suggestion' as real CSS (property names with hyphens, units included):
 - type "font_size": original "font-size: 14px", suggestion "font-size: 18px"
 - type "line_spacing": original "line-height: 1.2", suggestion "line-height: 1.6"
 - type "line_length": original "max-width: 96ch", suggestion "max-width: 65ch"
 - type "heading_size": original "font-size: 1em", suggestion "font-size: 1.2em"
-Take the suggested values from "applied_by_adapter" and the original values from the measurements.
+Take the suggested values from "applied_by_adapter" (only for real problems) and the original values from the measurements.
 Other types, with a plain-English suggestion (no CSS needed):
 - type "break_into_steps" when the screenshot shows a dense block that is really a sequence of steps or items.
 - type "more_spacing" when the screenshot looks cramped.

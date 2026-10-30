@@ -167,3 +167,12 @@ def test_layout_recommendations_are_capped_too():
     out = gen(FakeModel(reply(*recs)))
     assert len(out) == 4 and "high" in [r.severity for r in out] and "medium" in [r.severity for r in out]
     assert len(gen(FakeModel(reply(*recs)), max_recommendations=2)) == 2
+
+
+def test_prompt_says_to_flag_only_measurements_outside_the_guideline_range():
+    fake = FakeModel(reply(rec()))
+    gen(fake)
+    text = fake.calls[0][0]["content"]
+    assert "outside the range" in text and "16px, is fine" in text and "Do not report a measurement that is inside its range" in text
+    assert "only what you write in 'suggestion'" in text
+    assert "16 to 19 pixels" in fake.calls[0][1]["content"][0]["text"]  # the ranges themselves are in the data
