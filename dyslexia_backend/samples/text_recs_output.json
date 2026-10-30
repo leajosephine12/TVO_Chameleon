@@ -1,0 +1,24 @@
+[
+  {
+    "id": "r1",
+    "block_id": "p-1",
+    "type": "long_sentence",
+    "original": "Students compare different ways that consumers can get value for their money when spending, such as using reward programs or taking advantage of sales.",
+    "suggestion": "Students compare different ways that consumers can get value for their money. Examples are using reward programs or taking advantage of sales.",
+    "rationale": "24 words; Grade 3-5 target <= 15-20",
+    "evidence": "readability tool / W3C COGA",
+    "severity": "medium",
+    "status": "pending"
+  },
+  {
+    "id": "r2",
+    "block_id": "p-2",
+    "type": "difficult_word",
+    "original": "their parents earn a limited income.",
+    "suggestion": "their parents do not earn much money.",
+    "rationale": "'limited income' is a harder phrase for early readers",
+    "evidence": "readability tool / W3C COGA",
+    "severity": "low",
+    "status": "pending"
+  }
+]
