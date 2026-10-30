@@ -9,12 +9,14 @@ export const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || 'tvolearn.com')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-// Extra hosts whose content may be pulled in when it is embedded in a TVO Learn
-// page (an iframe). Empty by default: add only hosts you have been told are OK.
-export const EMBED_HOSTS = (process.env.EMBED_HOSTS || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+// Hosts whose content may be pulled in when it is embedded in a TVO Learn page
+// (an iframe). tvopublishing.com is where TVO's own course modules are served
+// from. Add more with the EMBED_HOSTS environment variable (comma-separated).
+export const DEFAULT_EMBED_HOSTS = ['tvopublishing.com'];
+export const EMBED_HOSTS = [
+    ...DEFAULT_EMBED_HOSTS,
+    ...(process.env.EMBED_HOSTS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+];
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 
@@ -81,6 +83,123 @@ function extFor(contentType, url) {
     return m ? '.' + m[1].toLowerCase() : '';
 }
 
+
+function kindFor(ct, u) {
+    let p = '';
+    try { p = new URL(u).pathname.toLowerCase(); } catch { /* ignore */ }
+    if (ct.includes('css') || p.endsWith('.css')) return 'stylesheet';
+    if (ct.includes('font') || /\.(woff2?|ttf|otf|eot)$/.test(p)) return 'font';
+    return 'image';
+}
+
+// Only fetch assets over https from public hosts (or from the hosts we were
+// told to copy), never from private networks.
+function assetUrlOk(u) {
+    let x;
+    try { x = new URL(u); } catch { return false; }
+    if (x.username || x.password) return false;
+    const h = x.hostname.toLowerCase();
+    if (frameHostAllowed(h)) return x.protocol === 'https:' || (x.protocol === 'http:' && LOCAL_HOSTS.has(h));
+    if (x.protocol !== 'https:') return false;
+    if (LOCAL_HOSTS.has(h) || h.endsWith('.local') || h.endsWith('.internal') || !h.includes('.')) return false;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':')) return false;
+    return true;
+}
+
+// Every file a stylesheet points at (url() and @import), as absolute links.
+function cssRefs(css, base) {
+    const out = [];
+    const add = (u) => {
+        const t = String(u || '').trim();
+        if (!t || t.startsWith('data:') || t.startsWith('#')) return;
+        try { out.push(new URL(t, base).href.split('#')[0]); } catch { /* ignore */ }
+    };
+    css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, _q, u) => { add(u); return m; });
+    css.replace(/@import\s+(['"])([^'"]+)\1/gi, (m, _q, u) => { add(u); return m; });
+    return out;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Wait until an embedded frame has loaded and stopped changing, scrolling it
+// so that lazy content appears.
+async function settleFrame(frame) {
+    await frame.waitForLoadState('load', { timeout: 20000 }).catch(() => { });
+    await frame.evaluate(async () => {
+        const root = document.scrollingElement || document.documentElement;
+        for (let y = 0; y < Math.min(root.scrollHeight, 20000); y += 400) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 80)); }
+        window.scrollTo(0, 0);
+    }).catch(() => { });
+    let last = '', still = 0;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 10000 && still < 3) {
+        const sig = await frame.evaluate(() =>
+            document.querySelectorAll('*').length + ':' + (document.body ? document.body.innerText.length : 0) + ':' + document.documentElement.scrollHeight
+        ).catch(() => 'gone');
+        if (sig === last) still++; else { still = 0; last = sig; }
+        await sleep(400);
+    }
+}
+
+
+// Open every accordion in an embedded frame (a static copy cannot toggle them).
+// Uses the page's own "Expand All" button when there is one, otherwise clicks
+// each collapsed heading, and opens <details> elements. Returns how many it opened.
+export async function expandAll(frame) {
+    return frame.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        let opened = 0;
+        document.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; opened++; });
+        const all = [...document.querySelectorAll('button, a, [role="button"]')]
+            .find((b) => /^\s*expand all\s*$/i.test(b.textContent || '') && !b.disabled && b.getAttribute('aria-disabled') !== 'true');
+        if (all) {
+            all.click(); opened++;
+            await wait(600);
+        }
+        const heads = [...document.querySelectorAll('[aria-expanded="false"]')].filter((h) => h.matches('button, [role="button"], summary, a'));
+        for (const h of heads.slice(0, 80)) {
+            try { h.click(); opened++; } catch { /* ignore */ }
+            await wait(80);
+        }
+        await wait(300);
+        // AMP accordions (amp-accordion): a section is open when it has the
+        // `expanded` attribute. If the click did not do it, set it directly.
+        document.querySelectorAll('amp-accordion section:not([expanded])').forEach((sec) => {
+            sec.setAttribute('expanded', '');
+            const hd = sec.querySelector('[aria-expanded]');
+            if (hd) hd.setAttribute('aria-expanded', 'true');
+            opened++;
+        });
+        // Panels that are still marked hidden after the clicks.
+        document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach((h) => {
+            const p = document.getElementById(h.getAttribute('aria-controls'));
+            if (p && p.hasAttribute('hidden')) { p.removeAttribute('hidden'); opened++; }
+        });
+        return opened;
+    }).catch(() => 0);
+}
+
+// Runs inside a page or frame: every file its inline styles, images and
+// icons refer to.
+function collectRefs() {
+    const out = new Set();
+    const add = (u) => { try { out.add(new URL(u, document.baseURI).href.split('#')[0]); } catch { /* ignore */ } };
+    const scan = (css) => String(css || '').replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, _q, u) => {
+        u = u.trim();
+        if (u && !u.startsWith('data:') && !u.startsWith('#')) add(u);
+        return m;
+    });
+    document.querySelectorAll('style').forEach((s) => scan(s.textContent));
+    document.querySelectorAll('[style]').forEach((e) => scan(e.getAttribute('style')));
+    [...document.styleSheets].forEach((sh) => {
+        if (sh.href) return;
+        try { [...sh.cssRules].forEach((r) => scan(r.cssText)); } catch { /* ignore */ }
+    });
+    document.querySelectorAll('img').forEach((i) => { const s = i.currentSrc || i.src; if (s && !s.startsWith('data:')) add(s); });
+    document.querySelectorAll('link[rel~="stylesheet"], link[rel~="icon"]').forEach((l) => { if (l.href) add(l.href); });
+    return [...out];
+}
+
 export async function capture(inputUrl, outRoot, log = () => { }) {
     const url = validateUrl(inputUrl);
     const id = Date.now().toString(36) + '-' + sha1(url.href).slice(0, 6);
@@ -89,9 +208,21 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
     await fs.mkdir(assetsDir, { recursive: true });
 
     const warnings = [];
+    const warn = (m) => { if (!warnings.includes(m)) warnings.push(m); };
     const resources = new Map(); // absolute url -> { file, type }
     const pending = [];
+    const embedInfo = [];
     let total = 0;
+
+    const store = async (u, body, ct, rt) => {
+        if (resources.has(u)) return;
+        if (body.length > MAX_FILE) { warn('Skipped a file over 15 MB: ' + u); return; }
+        if (total + body.length > MAX_TOTAL) { warn('Size limit reached, skipped: ' + u); return; }
+        total += body.length;
+        const file = sha1(u).slice(0, 12) + extFor(ct, u);
+        await fs.writeFile(path.join(assetsDir, file), body);
+        resources.set(u, { file, type: rt });
+    };
 
     log('Starting a headless browser');
     const browser = await chromium.launch({
@@ -118,7 +249,7 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
                 const isMain = !req.frame().parentFrame();
                 const ok = isMain ? hostAllowed(host) : frameHostAllowed(host);
                 if (!ok && !req.url().startsWith('about:') && !req.url().startsWith('data:')) {
-                    warnings.push('Did not load embedded content from ' + host + (isMain ? '' : ' (add it to EMBED_HOSTS if it is OK to copy)'));
+                    if (!isMain) warn('Not copied: embedded content from ' + host + ' (add it to EMBED_HOSTS if it is OK to copy)');
                     return route.abort();
                 }
             }
@@ -135,20 +266,15 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
                     const u = res.url().split('#')[0];
                     if (u.startsWith('data:')) return;
                     const body = await res.body();
-                    if (body.length > MAX_FILE) { warnings.push('Skipped a file over 15 MB: ' + u); return; }
-                    if (total + body.length > MAX_TOTAL) { warnings.push('Size limit reached, skipped: ' + u); return; }
-                    total += body.length;
                     const ct = (res.headers()['content-type'] || '').split(';')[0].trim().toLowerCase();
-                    const file = sha1(u).slice(0, 12) + extFor(ct, u);
-                    await fs.writeFile(path.join(assetsDir, file), body);
-                    resources.set(u, { file, type: rt });
+                    await store(u, body, ct, rt);
                 } catch { /* a response that cannot be read is simply not captured */ }
             })());
         });
 
         log('Opening ' + url.href);
         await page.goto(url.href, { waitUntil: 'networkidle', timeout: 60000 }).catch((e) => {
-            warnings.push('Page did not fully settle: ' + e.message.split('\n')[0]);
+            warn('Page did not fully settle: ' + e.message.split('\n')[0]);
         });
 
         const finalUrl = new URL(page.url());
@@ -172,12 +298,82 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
         await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => { });
         await page.waitForTimeout(600);
 
+        // ---- Embedded frames: load them fully before anything is saved -------
+        await page.$$eval('iframe', (els) => els.forEach((e, i) => e.setAttribute('data-embed', String(i))));
+        const handles = await page.$$('iframe');
+        const frameJobs = [];
+        for (let i = 0; i < handles.length; i++) {
+            try {
+                const box = await handles[i].boundingBox().catch(() => null);
+                if (!box || box.width < 24 || box.height < 24) continue; // tracking pixels, hidden helpers
+                const src = (await handles[i].getAttribute('src').catch(() => null)) || (await handles[i].getAttribute('data-src').catch(() => null)) || '';
+                await handles[i].scrollIntoViewIfNeeded().catch(() => { });
+                const frame = await handles[i].contentFrame();
+                if (!frame) continue;
+                // A lazy frame starts on about:blank; give it time to navigate.
+                for (let t = 0; src && frame.url() === 'about:blank' && t < 20; t++) await sleep(400);
+                let host = '';
+                try { host = new URL(frame.url()).hostname; } catch { /* ignore */ }
+                if (!host || !frameHostAllowed(host)) continue;
+                log('Waiting for embedded content from ' + host);
+                await settleFrame(frame);
+                const opened = await expandAll(frame);
+                if (opened) {
+                    log('Opened ' + opened + ' collapsed section(s) in the embedded content');
+                    await settleFrame(frame);
+                }
+                // Make the iframe tall enough to show everything it now holds.
+                const need = await frame.evaluate(() => Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))).catch(() => 0);
+                const have = (await handles[i].boundingBox().catch(() => null) || { height: 0 }).height;
+                if (need > have + 4 && need < 20000) {
+                    await handles[i].evaluate((el, h) => { el.style.height = h + 'px'; el.setAttribute('height', String(h)); }, need).catch(() => { });
+                }
+                frameJobs.push({ i, handle: handles[i], frame, host });
+            } catch (e) {
+                warn('Could not load an embedded frame: ' + e.message.split('\n')[0]);
+            }
+        }
+        await page.evaluate(() => window.scrollTo(0, 0)).catch(() => { });
+        await Promise.allSettled(pending);
+
         log('Taking a reference screenshot');
         await page.screenshot({ path: path.join(dir, 'screenshot.png'), fullPage: true }).catch((e) => {
-            warnings.push('Screenshot failed: ' + e.message.split('\n')[0]);
+            warn('Screenshot failed: ' + e.message.split('\n')[0]);
         });
 
-        await Promise.allSettled(pending);
+        // ---- Files that were referenced but never requested -------------------
+        // (hover backgrounds, fallback fonts, images in rules that did not apply,
+        // anything the browser kept in memory). Fetch them directly.
+        const tried = new Set();
+        let fetchedExtra = 0;
+        for (let round = 0; round < 3 && tried.size < 600; round++) {
+            const want = new Set();
+            for (const f of page.frames()) {
+                try { (await f.evaluate(collectRefs)).forEach((u) => want.add(u)); } catch { /* frame gone or blocked */ }
+            }
+            for (const [cssUrl, r] of resources) {
+                if (r.type !== 'stylesheet') continue;
+                try { cssRefs(await fs.readFile(path.join(assetsDir, r.file), 'utf8'), cssUrl).forEach((u) => want.add(u)); } catch { /* ignore */ }
+            }
+            const todo = [...want].filter((u) => !resources.has(u) && !tried.has(u) && assetUrlOk(u));
+            if (!todo.length) break;
+            todo.forEach((u) => tried.add(u));
+            log('Fetching ' + todo.length + ' referenced files that the page did not load');
+            for (let k = 0; k < todo.length; k += 8) {
+                await Promise.all(todo.slice(k, k + 8).map(async (u) => {
+                    try {
+                        const res = await context.request.get(u, { timeout: 15000, maxRedirects: 3, headers: { referer: url.href } });
+                        if (!res.ok()) return;
+                        const body = await res.body();
+                        const ct = (res.headers()['content-type'] || '').split(';')[0].trim().toLowerCase();
+                        const before = resources.size;
+                        await store(u, body, ct, kindFor(ct, u));
+                        if (resources.size > before) fetchedExtra++;
+                    } catch { /* leave it blank */ }
+                }));
+            }
+        }
+        if (fetchedExtra) log('Saved ' + fetchedExtra + ' extra files');
 
         // Stylesheets: rewrite url() and @import so they point at the saved files.
         log('Saving ' + resources.size + ' assets');
@@ -204,53 +400,51 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
             await fs.writeFile(file, css);
         }
 
-        // Page: freeze the rendered DOM.
+        // ---- Freeze the frames, then the page ---------------------------------
         log('Freezing the page');
         const mapFor = (prefix) => {
             const m = {};
             for (const [u, r] of resources) m[u] = prefix + 'assets/' + r.file;
             return m;
         };
-
-        // Embedded frames (an iframe whose page lives on an allowed host) are
-        // frozen on their own and linked from the copy. If a frame turns out to be
-        // empty once frozen (for example it draws on a canvas), a picture of it is
-        // saved instead.
-        await page.$$eval('iframe', (els) => els.forEach((e, i) => e.setAttribute('data-embed', String(i))));
         const embeds = {};
         const frameElements = [];
-        const frameStats = { placeholders: [], images: 0, imagesMissing: 0, cssAssetsMissing: 0 };
+        const frameStats = { placeholders: [], images: 0, imagesMissing: 0, cssAssetsMissing: 0, shadowRoots: 0 };
         await fs.mkdir(path.join(dir, 'frames'), { recursive: true });
-        const handles = await page.$$('iframe');
-        for (let i = 0; i < handles.length; i++) {
+        for (const { i, handle, frame, host } of frameJobs) {
             try {
-                const frame = await handles[i].contentFrame();
-                if (!frame) continue;
-                let host = '';
-                try { host = new URL(frame.url()).hostname; } catch { /* ignore */ }
-                if (!host || !frameHostAllowed(host)) continue;
-                log('Capturing embedded content from ' + host);
+                log('Copying embedded content from ' + host);
                 let shot = null;
-                try { shot = await handles[i].screenshot(); } catch { /* ignore */ }
-                const out = await frame.evaluate(freezeInPage, { map: mapFor('../'), embeds: {}, cidPrefix: 'f' + i + '-', TRANSPARENT_GIF });
+                try { shot = await handle.screenshot(); } catch { /* ignore */ }
+                let out = await frame.evaluate(freezeInPage, { map: mapFor('../'), embeds: {}, cidPrefix: 'f' + i + '-', TRANSPARENT_GIF });
                 const textLen = out.elements.reduce((n, e) => n + (e.text ? e.text.length : 0), 0);
-                if (out.elements.length < 4 || textLen < 20) {
-                    if (!shot) continue;
+                if ((out.elements.length < 4 || textLen < 20) && !out.stats.shadowRoots) {
+                    if (!shot) { embedInfo.push({ index: i, host, result: 'empty' }); continue; }
                     const file = 'embed-' + i + '.png';
                     await fs.writeFile(path.join(assetsDir, file), shot);
                     embeds[i] = { kind: 'image', file: 'assets/' + file };
-                    warnings.push('The embedded content from ' + host + ' had nothing to copy, so a picture of it was saved instead.');
+                    embedInfo.push({ index: i, host, result: 'picture' });
+                    warn('The embedded content from ' + host + ' had nothing to copy (it probably draws itself with a script), so a picture of it was saved instead.');
                 } else {
                     await fs.writeFile(path.join(dir, 'frames', 'f' + i + '.html'), out.html);
                     embeds[i] = { kind: 'frame', file: 'frames/f' + i + '.html' };
+                    embedInfo.push({ index: i, host, result: 'copied', elements: out.elements.length });
                     out.elements.forEach((e) => frameElements.push({ ...e, frame: 'f' + i }));
                     frameStats.placeholders.push(...out.stats.placeholders);
                     frameStats.images += out.stats.images;
                     frameStats.imagesMissing += out.stats.imagesMissing;
                     frameStats.cssAssetsMissing += out.stats.cssAssetsMissing;
+                    frameStats.shadowRoots += out.stats.shadowRoots;
                 }
             } catch (e) {
-                warnings.push('Could not capture an embedded frame: ' + e.message.split('\n')[0]);
+                warn('Could not copy an embedded frame from ' + host + ': ' + e.message.split('\n')[0]);
+                try {
+                    const shot = await handle.screenshot();
+                    const file = 'embed-' + i + '.png';
+                    await fs.writeFile(path.join(assetsDir, file), shot);
+                    embeds[i] = { kind: 'image', file: 'assets/' + file };
+                    embedInfo.push({ index: i, host, result: 'picture' });
+                } catch { embedInfo.push({ index: i, host, result: 'failed' }); }
             }
         }
 
@@ -262,6 +456,9 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
         frozen.elements.push(...frameElements);
 
         frozen.stats.cssAssetsMissing += cssMissing;
+        frozen.stats.shadowRoots += frameStats.shadowRoots;
+        if (frozen.stats.shadowRoots) warn(frozen.stats.shadowRoots + ' element(s) keep their content in shadow DOM, which is not copied.');
+        if (frozen.stats.removed.hiddenFrames) log('Left out ' + frozen.stats.removed.hiddenFrames + ' hidden helper frame(s) (tracking, consent, payment widgets)');
 
         await fs.writeFile(path.join(dir, 'index.html'), frozen.html);
         await fs.writeFile(path.join(dir, 'elements.json'), JSON.stringify(frozen.elements));
@@ -274,6 +471,8 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
             viewport: { width: 1660 },
             docHeight: frozen.docHeight,
             assets: resources.size,
+            embeds: embedInfo,
+            extraFilesFetched: fetchedExtra,
             elements: frozen.elements.length,
             stats: frozen.stats,
             warnings
@@ -290,9 +489,19 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
 function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
     const stats = {
         images: 0, imagesMissing: 0, stylesheets: 0, stylesheetsMissing: 0, cssAssetsMissing: 0,
-        removed: { scripts: 0, preloads: 0, cookieBanners: 0 },
+        removed: { scripts: 0, preloads: 0, cookieBanners: 0, hiddenFrames: 0 },
+        shadowRoots: 0,
         placeholders: []
     };
+    // Measure the page as it is now, before anything is changed. scrollHeight
+    // also counts off-screen helpers (hidden widgets), which would leave a blank
+    // area under the footer.
+    const boxHeight = Math.ceil(Math.max(
+        document.documentElement.getBoundingClientRect().height,
+        document.body ? document.body.getBoundingClientRect().bottom + scrollY : 0
+    ));
+    const fullHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+    const docHeight = boxHeight >= 200 && boxHeight <= fullHeight ? boxHeight : fullHeight;
     const abs = (u) => { try { return new URL(u, document.baseURI).href.split('#')[0]; } catch { return null; } };
     const local = (u) => { const a = u && abs(u); return a && map[a] ? map[a] : null; };
 
@@ -304,6 +513,7 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         if (SKIP.has(el.tagName)) return;
         const cid = cidPrefix + 'c' + (++n);
         el.setAttribute('data-cid', cid);
+        if (el.shadowRoot) stats.shadowRoots++;
         if (!el.closest('body')) return;
         const r = el.getBoundingClientRect();
         if (r.width < 1 || r.height < 1 || elements.length >= 8000) return;
@@ -428,6 +638,16 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
     // 7. Things that cannot be frozen become labelled placeholders.
     document.querySelectorAll('iframe').forEach((f) => {
         const e = embeds[f.getAttribute('data-embed')];
+        if (!e) {
+            // Tracking pixels, consent and payment helpers: invisible, so nothing to show.
+            const fr = f.getBoundingClientRect();
+            const fcs = getComputedStyle(f);
+            if (fr.width < 24 || fr.height < 24 || fcs.display === 'none' || fcs.visibility === 'hidden') {
+                f.remove();
+                stats.removed.hiddenFrames++;
+                return;
+            }
+        }
         let host = 'embedded content';
         try { host = new URL(f.src).hostname; } catch { /* ignore */ }
         f.removeAttribute('data-embed');
@@ -479,6 +699,6 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         html: '<!doctype html>\n' + document.documentElement.outerHTML,
         stats, elements,
         title: document.title,
-        docHeight: Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)
+        docHeight
     };
 }
