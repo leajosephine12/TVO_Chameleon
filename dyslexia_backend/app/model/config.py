@@ -61,3 +61,27 @@ class ModelConfig:
                 "MODEL_NAME is not set. Set it to your model tag (see `ollama list`), "
                 "or set MODEL_MOCK=1 to use the mock."
             )
+
+
+def load_env_file(path) -> list[str]:
+    """Load MODEL_* settings from a .env file into the environment. Returns the NAMES loaded (never the values).
+
+    Optional helper (no extra package needed). Variables that are already set win, so a value typed in the
+    terminal overrides the file. Other keys in the file are ignored. A missing file is fine.
+    """
+    from pathlib import Path
+
+    file = Path(path)
+    if not file.is_file():
+        return []
+    loaded = []
+    for line in file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        name, value = name.strip(), value.strip().strip("\"'")
+        if name.startswith("MODEL_") and value and name not in os.environ:
+            os.environ[name] = value
+            loaded.append(name)
+    return loaded
