@@ -15,7 +15,7 @@ from .config import ModelConfig
 from .adapted_ui_spec import parse_css
 from .guards import check_known_blocks, check_rationale_numbers, check_status_pending
 from .prompts import attach_image, build_messages
-from .runner import renumber, run_recommendation_task
+from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
 TASK = "layout_recs"
@@ -106,6 +106,7 @@ def generate_layout_recommendations(
     metrics: dict,
     *,
     start_id: int = 1,
+    max_recommendations: int | None = DEFAULT_MAX_RECOMMENDATIONS,
     max_retries: int | None = None,
     config: ModelConfig | None = None,
     transport=None,
@@ -127,4 +128,4 @@ def generate_layout_recommendations(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
-    return renumber(recs, start_id)  # pass start_id=len(text_recs)+1 so ids stay unique across calls 1 and 2
+    return renumber(cap_by_severity(recs, max_recommendations), start_id)  # pass start_id=len(text_recs)+1 so ids stay unique across calls 1 and 2

@@ -106,3 +106,21 @@ def run_recommendation_task(
 def renumber(recs: list[Recommendation], start: int = 1) -> list[Recommendation]:
     """Give recommendations ids r{start}, r{start+1}, ... The code, not the model, owns ids (models repeat them)."""
     return [r.model_copy(update={"id": f"r{start + i}"}) for i, r in enumerate(recs)]
+
+
+DEFAULT_MAX_RECOMMENDATIONS = 4
+_SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def cap_by_severity(recs: list[Recommendation], limit: int | None = DEFAULT_MAX_RECOMMENDATIONS) -> list[Recommendation]:
+    """Keep the `limit` most severe recommendations (ties: the earlier one wins), in their original order.
+
+    The rest are dropped on purpose and counted in the log. None means no cap.
+    """
+    if limit is None or len(recs) <= limit:
+        return recs
+    if limit < 1:
+        raise ValueError("max_recommendations must be 1 or more (or None for no cap).")
+    keep = sorted(sorted(range(len(recs)), key=lambda i: (_SEVERITY_RANK[recs[i].severity], i))[:limit])
+    log.info("cap: kept %d of %d recommendations by severity, dropped %d", limit, len(recs), len(recs) - limit)
+    return [recs[i] for i in keep]

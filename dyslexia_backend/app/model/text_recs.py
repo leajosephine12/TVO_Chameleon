@@ -15,7 +15,7 @@ from .guards import (
     check_status_pending,
 )
 from .prompts import build_messages
-from .runner import renumber, run_recommendation_task
+from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
 TASK = "text_recs"
@@ -57,6 +57,7 @@ def generate_text_recommendations(
     findings: dict,
     *,
     start_id: int = 1,
+    max_recommendations: int | None = DEFAULT_MAX_RECOMMENDATIONS,
     max_retries: int | None = None,
     config: ModelConfig | None = None,
     transport=None,
@@ -83,4 +84,4 @@ def generate_text_recommendations(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
-    return renumber(recs, start_id)
+    return renumber(cap_by_severity(recs, max_recommendations), start_id)

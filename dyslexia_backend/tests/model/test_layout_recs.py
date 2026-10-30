@@ -160,3 +160,10 @@ def test_ids_are_assigned_by_code_so_duplicates_from_the_model_do_not_matter():
     fake = FakeModel(reply(*dup))
     out = gen(fake, start_id=5)
     assert [r.id for r in out] == ["r5", "r6"] and len(fake.calls) == 1  # no retry spent on ids
+
+
+def test_layout_recommendations_are_capped_too():
+    recs = [rec(id=f"m{i}", severity=s) for i, s in enumerate(["low", "high", "low", "low", "medium", "low"])]
+    out = gen(FakeModel(reply(*recs)))
+    assert len(out) == 4 and "high" in [r.severity for r in out] and "medium" in [r.severity for r in out]
+    assert len(gen(FakeModel(reply(*recs)), max_recommendations=2)) == 2

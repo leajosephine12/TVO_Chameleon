@@ -197,3 +197,37 @@ def test_rejection_reasons_are_logged(caplog):
     caplog.set_level(logging.INFO, logger="app.model")
     run(FakeModel(good(rationale="99 words"), good()))
     assert any("rejected because" in r.getMessage() and "99" in r.getMessage() for r in caplog.records)
+
+
+# ---- the recommendation cap ----
+
+def sev_recs(*severities):
+    return [Recommendation(id=f"x{i}", block_id="p-1", type="t", original="o", suggestion="s", rationale="r", evidence="e", severity=s)
+            for i, s in enumerate(severities)]
+
+
+def test_cap_keeps_the_most_severe_in_original_order_and_logs_the_drop(caplog):
+    import logging
+    from app.model.runner import cap_by_severity
+    caplog.set_level(logging.INFO, logger="app.model")
+    recs = sev_recs("low", "medium", "high", "low", "medium", "high", "low")
+    kept = cap_by_severity(recs, 4)
+    assert [r.id for r in kept] == ["x1", "x2", "x4", "x5"]                       # 2 high + 2 medium, original order
+    assert sorted(r.severity for r in kept) == ["high", "high", "medium", "medium"]
+    assert any("kept 4 of 7" in m.getMessage() and "dropped 3" in m.getMessage() for m in caplog.records)
+
+
+def test_cap_ties_go_to_the_earlier_recommendation():
+    from app.model.runner import cap_by_severity
+    assert [r.id for r in cap_by_severity(sev_recs("medium", "medium", "medium"), 2)] == ["x0", "x1"]
+
+
+def test_cap_does_nothing_when_under_the_limit_or_disabled(caplog):
+    import logging
+    from app.model.runner import cap_by_severity
+    caplog.set_level(logging.INFO, logger="app.model")
+    recs = sev_recs("low", "high")
+    assert cap_by_severity(recs, 4) is recs and cap_by_severity(sev_recs(*["low"] * 9), None).__len__() == 9
+    assert not caplog.records
+    with pytest.raises(ValueError):
+        cap_by_severity(sev_recs("low", "low"), 0)

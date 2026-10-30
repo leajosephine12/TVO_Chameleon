@@ -138,3 +138,15 @@ def test_saved_samples_exist_and_match_the_mock(monkeypatch):
     fresh = generate_text_recommendations(saved_in["blocks"], saved_in["findings"])
     assert saved_out == [r.model_dump() for r in fresh]
     assert [Recommendation(**r) for r in saved_out]
+
+
+def test_seven_recommendations_are_capped_to_the_four_most_severe_and_renumbered(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="app.model")
+    sevs = ["low", "low", "high", "medium", "low", "high", "medium"]
+    recs = [rec(id=f"m{i}", severity=s) for i, s in enumerate(sevs)]
+    out = gen(FakeModel(reply(*recs)))
+    assert len(out) == 4 and [r.id for r in out] == ["r1", "r2", "r3", "r4"]
+    assert sorted(r.severity for r in out) == ["high", "high", "medium", "medium"]
+    assert any("dropped 3" in m.getMessage() for m in caplog.records)
+    assert len(gen(FakeModel(reply(*recs)), max_recommendations=None)) == 7
