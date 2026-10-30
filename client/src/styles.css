@@ -1,0 +1,20 @@
+/* Base styles. Colours are defined once, here. */
+:root {
+  --ink: #1f2933;
+  --page: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--page);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app {
+  padding: 24px;
+}
