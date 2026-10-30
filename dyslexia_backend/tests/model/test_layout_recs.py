@@ -176,3 +176,81 @@ def test_prompt_says_to_flag_only_measurements_outside_the_guideline_range():
     assert "outside the range" in text and "16px, is fine" in text and "Do not report a measurement that is inside its range" in text
     assert "only what you write in 'suggestion'" in text
     assert "16 to 19 pixels" in fake.calls[0][1]["content"][0]["text"]  # the ranges themselves are in the data
+
+
+# ---- range guard: a measurement already inside the guideline range gets no suggestion ----
+
+from app.model.layout_recs import drop_in_range, layout_ranges  # noqa: E402
+
+
+def drop(recs, metrics):
+    """drop_in_range on test dicts; returns the ids that were kept."""
+    return [r.id for r in drop_in_range([Recommendation(**r) for r in recs], metrics)]
+
+
+def metrics_for(**by_block):
+    return {"blocks": [{"block_id": b, **m} for b, m in by_block.items()]}
+
+
+def css_rec(rid, block, prop, value, original="x: 0", type="font_size"):
+    return rec(id=rid, block_id=block, type=type, original=original, suggestion=f"{prop}: {value}", rationale="problem")
+
+
+def test_ranges_are_read_from_the_guideline_sentences():
+    assert layout_ranges() == {"min_font_size_px": 16.0, "min_line_height": 1.5, "max_line_length_chars": 70.0}
+
+
+def test_unreadable_guideline_wording_fails_loudly(monkeypatch):
+    from app.model import layout_recs
+    changed = [g.model_copy(update={"rule": "Use a bigger font."}) if g.id == "L1.1.2" else g for g in layout_recs.LEVEL1_GUIDELINES]
+    monkeypatch.setattr(layout_recs, "LEVEL1_GUIDELINES", changed)
+    with pytest.raises(RuntimeError, match="min_font_size_px"):
+        layout_ranges()
+
+
+def test_a_16px_block_gets_no_font_size_suggestion():
+    metrics = metrics_for(**{"p-1": {"font_size_px": 16}, "p-3": {"font_size_px": 14}})
+    out = generate_layout_recommendations(
+        TINY_PNG, metrics, caller=FakeModel(reply(
+            css_rec("a", "p-1", "font-size", "18px", "font-size: 16px"),
+            css_rec("b", "p-3", "font-size", "18px", "font-size: 14px"))))
+    assert [(r.block_id, r.suggestion) for r in out] == [("p-3", "font-size: 18px")] and out[0].id == "r1"
+
+
+def test_other_in_range_measurements_are_dropped_and_real_problems_kept():
+    metrics = metrics_for(**{"p-1": {"line_height": 1.56, "line_length_chars": 70}, "p-2": {"line_height": 1.2, "line_length_chars": 129}})
+    recs = [
+        css_rec("a", "p-1", "line-height", "1.6", type="line_spacing"),   # 1.56 >= 1.5: fine
+        css_rec("b", "p-2", "line-height", "1.6", type="line_spacing"),   # 1.2 < 1.5: real
+        css_rec("c", "p-1", "max-width", "65ch", type="line_length"),     # 70 <= 70: fine
+        css_rec("d", "p-2", "max-width", "65ch", type="line_length"),     # 129 > 70: real
+    ]
+    assert drop(recs, metrics) == ["b", "d"]
+
+
+def test_boundaries_and_unknowns_are_kept():
+    metrics = metrics_for(**{"p-1": {"font_size_px": 15.9}, "p-2": {}})
+    recs = [css_rec("a", "p-1", "font-size", "18px"),                      # just under 16: real
+            css_rec("b", "p-2", "font-size", "18px"),                      # no measurement: cannot judge, keep
+            css_rec("c", "p-9", "font-size", "18px"),                      # block not measured: keep
+            css_rec("d", "p-1", "font-size", "1.2em", type="heading_size"),  # heading: not judged
+            rec(id="e", type="break_into_steps", suggestion="Break this into steps.")]  # not CSS: not judged
+    assert drop(recs, metrics) == ["a", "b", "c", "d", "e"]
+
+
+def test_page_wide_suggestion_is_dropped_only_if_every_block_is_in_range():
+    page = css_rec("a", "page", "font-size", "18px")
+    assert drop([page], metrics_for(**{"p-1": {"font_size_px": 16}, "p-2": {"font_size_px": 18}})) == []
+    assert drop([page], metrics_for(**{"p-1": {"font_size_px": 16}, "p-2": {"font_size_px": 14}})) == ["a"]
+
+
+def test_the_drop_is_logged(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="app.model")
+    drop([css_rec("a", "p-1", "font-size", "18px")], metrics_for(**{"p-1": {"font_size_px": 16}}))
+    assert any("dropped a" in m.getMessage() and "inside the guideline range" in m.getMessage() for m in caplog.records)
+
+
+def test_mock_mode_is_not_judged_against_the_input(monkeypatch):
+    monkeypatch.setenv("MODEL_MOCK", "1")
+    assert generate_layout_recommendations(TINY_PNG, metrics_for(**{"p-1": {"line_height": 2.0}}))  # mock rec still returned

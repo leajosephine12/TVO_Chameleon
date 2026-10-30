@@ -7,6 +7,8 @@ Reference targets are imported from guidelines.py (the team's single source of t
 """
 import base64
 import binascii
+import logging
+import re
 from functools import partial
 
 from ..guidelines import BODY_FONT_PX, HEADING_SCALE, LEVEL1_GUIDELINES, LINE_HEIGHT, MAX_LINE_CH
@@ -18,6 +20,7 @@ from .prompts import attach_image, build_messages
 from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
+log = logging.getLogger("app.model")
 TASK = "layout_recs"
 CSS_TYPES = ("font_size", "line_spacing", "line_length", "heading_size")  # their suggestion must be a CSS declaration
 _RULE_IDS = ("L1.1.2", "L1.1.3", "L1.1.6", "L1.3.2")  # font size, heading size, line spacing, line length
@@ -37,6 +40,65 @@ def layout_targets() -> dict:
         },
         "guideline_rules": rules,
     }
+
+
+def layout_ranges() -> dict[str, float]:
+    """The guideline limits as numbers, read from the imported rule sentences (so they cannot drift from guidelines.py).
+
+    Raises RuntimeError if a sentence no longer has the expected wording: better loud than silently wrong.
+    """
+    rules = layout_targets()["guideline_rules"]
+    found = {
+        "min_font_size_px": re.search(r"\((\d+) to \d+ pixels\)", rules["L1.1.2"]),
+        "min_line_height": re.search(r"at least (\d+(?:\.\d+)?)", rules["L1.1.6"]),
+        "max_line_length_chars": re.search(r"\d+ to (\d+) characters", rules["L1.3.2"]),
+    }
+    missing = [name for name, m in found.items() if m is None]
+    if missing:
+        raise RuntimeError(f"Could not read {missing} from the guideline sentences in guidelines.py; update layout_ranges().")
+    return {name: float(m.group(1)) for name, m in found.items()}
+
+
+# CSS property -> (metric key, True if the measurement is fine when >= the limit, limit name, required unit)
+_RANGE_CHECKS = {
+    "font-size": ("font_size_px", True, "min_font_size_px", "px"),
+    "line-height": ("line_height", True, "min_line_height", ""),
+    "max-width": ("line_length_chars", False, "max_line_length_chars", "ch"),
+}
+
+
+def drop_in_range(recs: list[Recommendation], metrics: dict) -> list[Recommendation]:
+    """Remove recommendations that "fix" a measurement already inside the guideline range (for example font-size at 16px).
+
+    Only single-property CSS suggestions are judged, and only when the block's measurement is known; anything else is kept.
+    For block_id "page" the recommendation is dropped only if every measured block is in range.
+    """
+    limits, by_block = layout_ranges(), {b["block_id"]: b for b in metrics["blocks"]}
+    kept = []
+    for r in recs:
+        try:
+            props = parse_css(r.suggestion)
+        except ValueError:
+            kept.append(r)
+            continue
+        if len(props) != 1 or r.type == "heading_size":
+            kept.append(r)
+            continue
+        prop, value = next(iter(props.items()))
+        check = _RANGE_CHECKS.get(prop)
+        if check is None or not value.endswith(check[3]):
+            kept.append(r)
+            continue
+        key, fine_when_at_least, limit_name, _ = check
+        blocks = by_block.values() if r.block_id == "page" else [by_block.get(r.block_id, {})]
+        measured = [b[key] for b in blocks if isinstance(b.get(key), (int, float))]
+        limit = limits[limit_name]
+        in_range = bool(measured) and all((m >= limit) if fine_when_at_least else (m <= limit) for m in measured)
+        if in_range:
+            log.info("guard: dropped %s (%s measured %s is already inside the guideline range, limit %s)", r.id, key, measured[0], limit)
+        else:
+            kept.append(r)
+    return kept
 
 
 INSTRUCTIONS = """\
@@ -134,4 +196,6 @@ def generate_layout_recommendations(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
+    if not config.mock:  # the mock ignores its input, so it is not judged against the measurements
+        recs = drop_in_range(recs, metrics)
     return renumber(cap_by_severity(recs, max_recommendations), start_id)  # pass start_id=len(text_recs)+1 so ids stay unique across calls 1 and 2
