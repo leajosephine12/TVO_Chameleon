@@ -60,3 +60,14 @@ or inside a string. Extra fields are fine.
 
 The reference targets are added by the model layer from `app/guidelines.py` (imported, not copied), so the tool does not send targets.
 The output is a plain list of recommendations in the shared format. This call needs a vision-capable model.
+
+## Stand-in for `analyze_text`
+
+`app/model/standin_analyze_text.py` is a **stand-in** (plain code, no model) that produces findings in the proposed shape, so call 1 can run end to end today:
+
+```python
+findings = standin_analyze_text(blocks)
+recs = generate_text_recommendations(blocks, findings)
+```
+
+It is flagged `"STAND_IN": true` in its output. Replace it with the team's real `analyze_text` when that exists. Its readability grade is Flesch-Kincaid and its syllable, sentence and difficult-word detection are rough heuristics.
