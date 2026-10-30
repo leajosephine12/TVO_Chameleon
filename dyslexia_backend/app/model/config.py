@@ -5,6 +5,7 @@ MODEL_BASE_URL      OpenAI-compatible base URL (Ollama: http://localhost:11434/v
 MODEL_NAME          model tag to send (required in real mode)
 MODEL_API_KEY       optional; sent as a Bearer token when set
 MODEL_TIMEOUT       optional request timeout in seconds (default 120)
+MODEL_MAX_RETRIES   optional; retries after an invalid reply (default 2, so up to 3 calls)
 
 The environment is read each time `ModelConfig.from_env()` is called, not at import,
 so changing a variable (or a test monkeypatching one) takes effect immediately.
@@ -14,6 +15,7 @@ from dataclasses import dataclass, field
 
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_TIMEOUT = 120.0
+DEFAULT_MAX_RETRIES = 2
 _TRUTHY = {"1", "true", "yes", "on"}
 
 
@@ -28,6 +30,7 @@ class ModelConfig:
     model_name: str = ""
     api_key: str | None = field(default=None, repr=False)  # repr=False: keep the key out of logs
     timeout: float = DEFAULT_TIMEOUT
+    max_retries: int = DEFAULT_MAX_RETRIES
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
@@ -36,12 +39,19 @@ class ModelConfig:
             timeout = float(os.environ.get("MODEL_TIMEOUT", DEFAULT_TIMEOUT))
         except ValueError:
             raise ModelConfigError("MODEL_TIMEOUT must be a number of seconds.") from None
+        try:
+            max_retries = int(os.environ.get("MODEL_MAX_RETRIES", DEFAULT_MAX_RETRIES))
+            if max_retries < 0:
+                raise ValueError
+        except ValueError:
+            raise ModelConfigError("MODEL_MAX_RETRIES must be a whole number, 0 or more.") from None
         return cls(
             mock=mock,
             base_url=os.environ.get("MODEL_BASE_URL", DEFAULT_BASE_URL).strip().rstrip("/"),
             model_name=os.environ.get("MODEL_NAME", "").strip(),
             api_key=os.environ.get("MODEL_API_KEY", "").strip() or None,
             timeout=timeout,
+            max_retries=max_retries,
         )
 
     def require_real(self) -> None:

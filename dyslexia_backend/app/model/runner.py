@@ -3,6 +3,8 @@
 If the model still fails after the retries, ModelOutputError is raised. Invalid data is never returned.
 """
 import json
+import logging
+import time
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -14,8 +16,8 @@ from .config import ModelConfig
 from .guards import extract_json
 from .schemas import Recommendation, RecommendationList
 
+log = logging.getLogger("app.model")
 T = TypeVar("T", bound=BaseModel)
-DEFAULT_MAX_RETRIES = 2
 _MAX_PROBLEMS_SHOWN = 10
 
 
@@ -42,17 +44,31 @@ def run_task(
     messages: list[dict],
     schema: type[T],
     checks: tuple[Callable[[T], list[str]], ...] = (),
-    max_retries: int = DEFAULT_MAX_RETRIES,
+    max_retries: int | None = None,
     config: ModelConfig | None = None,
     transport: httpx.BaseTransport | None = None,
     caller: Callable[..., str] = call_model,
 ) -> T:
-    """Return a validated `schema` object, or raise ModelOutputError. Network/config errors are not retried."""
+    """Return a validated `schema` object, or raise ModelOutputError. Network/config errors are not retried.
+
+    max_retries defaults to MODEL_MAX_RETRIES (2). Each attempt's duration is logged to the "app.model" logger.
+    """
+    config = config or ModelConfig.from_env()
+    if max_retries is None:
+        max_retries = config.max_retries
     messages = list(messages)
     attempts = max_retries + 1
     problems: list[str] = []
-    for _ in range(attempts):
-        reply = caller(messages, task=task, config=config, transport=transport)
+    started = time.perf_counter()
+    for n in range(1, attempts + 1):
+        label = f"task={task} attempt={n}/{attempts} retry={n > 1}"
+        t0 = time.perf_counter()
+        try:
+            reply = caller(messages, task=task, config=config, transport=transport)
+        except Exception as e:
+            log.warning("%s model_call=%.2fs outcome=call_failed (%s)", label, time.perf_counter() - t0, type(e).__name__)
+            raise
+        call_secs = time.perf_counter() - t0
         problems = []
         parsed = None
         try:
@@ -67,8 +83,11 @@ def run_task(
         if parsed is not None:
             problems = [p for check in checks for p in check(parsed)]
             if not problems:
+                log.info("%s model_call=%.2fs outcome=ok total=%.2fs", label, call_secs, time.perf_counter() - started)
                 return parsed
+        log.info("%s model_call=%.2fs outcome=invalid (%d problem%s)", label, call_secs, len(problems), "" if len(problems) == 1 else "s")
         messages += [{"role": "assistant", "content": reply}, {"role": "user", "content": _feedback(problems)}]
+    log.warning("task=%s gave up after %d attempts, total=%.2fs", task, attempts, time.perf_counter() - started)
     raise ModelOutputError(task, attempts, problems)
 
 

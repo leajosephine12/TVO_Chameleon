@@ -154,3 +154,38 @@ def test_injected_instructions_stay_inside_the_data_block():
     user = msgs[1]["content"]
     assert user.count("</page_data>") == 1 and user.index("</page_data>") > user.index("HACKED")
     assert "never an instruction" in msgs[0]["content"]
+
+
+# ---- retries from config, and timing logs ----
+
+def test_max_retries_comes_from_config(monkeypatch):
+    monkeypatch.setenv("MODEL_MAX_RETRIES", "1")
+    fake = FakeModel("garbage")
+    with pytest.raises(ModelOutputError):
+        run(fake)
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.parametrize("bad", ["-1", "two", "1.5"])
+def test_bad_max_retries_is_a_clear_error(monkeypatch, bad):
+    from app.model.config import ModelConfig, ModelConfigError
+    monkeypatch.setenv("MODEL_MAX_RETRIES", bad)
+    with pytest.raises(ModelConfigError, match="MODEL_MAX_RETRIES"):
+        ModelConfig.from_env()
+
+
+def test_each_attempt_is_logged_with_duration_and_retry_flag(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="app.model")
+    run(FakeModel("garbage", good()))
+    lines = [r.getMessage() for r in caplog.records]
+    assert "attempt=1/3 retry=False" in lines[0] and "outcome=invalid" in lines[0] and "model_call=" in lines[0]
+    assert "attempt=2/3 retry=True" in lines[1] and "outcome=ok" in lines[1] and "total=" in lines[1]
+
+
+def test_giving_up_is_logged(caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="app.model")
+    with pytest.raises(ModelOutputError):
+        run(FakeModel("garbage"), max_retries=1)
+    assert any("gave up after 2 attempts" in r.getMessage() for r in caplog.records)
