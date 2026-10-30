@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ["MODEL_MOCK"] = "1"
 
-from app.model.sample_data import FAKE_FINDINGS, SAMPLE_BLOCKS  # noqa: E402
+from app.model.layout_recs import generate_layout_recommendations  # noqa: E402
+from app.model.sample_data import FAKE_FINDINGS, FAKE_LAYOUT_METRICS, SAMPLE_BLOCKS, TINY_PNG  # noqa: E402
 from app.model.text_recs import generate_text_recommendations  # noqa: E402
 
 SAMPLES = ROOT / "samples"
@@ -28,3 +29,5 @@ if __name__ == "__main__":
     SAMPLES.mkdir(exist_ok=True)
     save("text_recs_input.json", {"blocks": SAMPLE_BLOCKS, "findings": FAKE_FINDINGS})
     save("text_recs_output.json", [r.model_dump() for r in generate_text_recommendations(SAMPLE_BLOCKS, FAKE_FINDINGS)])
+    save("layout_recs_input.json", {"screenshot": "(omitted: a tiny placeholder image is used)", "metrics": FAKE_LAYOUT_METRICS})
+    save("layout_recs_output.json", [r.model_dump() for r in generate_layout_recommendations(TINY_PNG, FAKE_LAYOUT_METRICS)])

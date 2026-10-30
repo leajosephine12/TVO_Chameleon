@@ -150,7 +150,7 @@ def test_importing_model_package_does_not_need_fastmcp():
     """Block fastmcp in a fresh interpreter, then import the whole model package."""
     code = (
         "import sys; sys.modules['fastmcp'] = None; sys.path.insert(0, '.');"
-        "import app.model.client, app.model.schemas, app.model.config; print('ok')"
+        "import app.model.client, app.model.schemas, app.model.config, app.model.text_recs, app.model.layout_recs; print('ok')"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=BACKEND_DIR, capture_output=True, text=True)
     assert out.returncode == 0 and "ok" in out.stdout, out.stderr

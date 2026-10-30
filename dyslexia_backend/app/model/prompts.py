@@ -21,3 +21,10 @@ def build_messages(task_instructions: str, schema: type[BaseModel], data: object
     system = f"{task_instructions}\n\n{RULES}\n\nJSON schema for your reply:\n{schema_text}"
     user = f"Here is the data for the task.\n{quote_as_data(data)}\nReply with the JSON object only."
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def attach_image(messages: list[dict], data_url: str) -> list[dict]:
+    """Add an image (a data: URL) to the last user message, in the OpenAI vision format."""
+    *rest, last = messages
+    content = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": data_url}}]
+    return [*rest, {**last, "content": content}]

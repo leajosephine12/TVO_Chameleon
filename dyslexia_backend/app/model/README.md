@@ -47,3 +47,16 @@ Example output (a plain list, the team's shared recommendation format, all `pend
 
 What the tool must provide: any number a rationale may quote (word counts, grade levels, targets) as a plain number
 or inside a string. Extra fields are fine.
+
+## Layout metrics contract (PROPOSAL for the owner of `layout_metrics`)
+
+> Also a proposal. No `layout_metrics` tool exists on the branch yet.
+
+`generate_layout_recommendations(screenshot, metrics)` takes a screenshot (PNG/JPEG/WebP bytes, or base64 text) and:
+
+```json
+{"blocks": [{"block_id": "p-1", "font_size_px": 14, "line_height": 1.2, "line_length_chars": 96}]}
+```
+
+The reference targets are added by the model layer from `app/guidelines.py` (imported, not copied), so the tool does not send targets.
+The output is a plain list of recommendations in the shared format. This call needs a vision-capable model.

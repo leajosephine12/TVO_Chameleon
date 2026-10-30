@@ -55,8 +55,9 @@ def test_mock_text_replies_pass_all_checks(monkeypatch):
 
 
 def test_mock_layout_numbers_agree_with_fake_metrics():
+    from app.model.layout_recs import layout_targets
     recs = RecommendationList.model_validate(MOCK_RESPONSES["layout_recs"]).recommendations
-    assert guards.check_rationale_numbers(recs, FAKE_LAYOUT_METRICS) == []
+    assert guards.check_rationale_numbers(recs, {**FAKE_LAYOUT_METRICS, "targets": layout_targets()}) == []
 
 
 # ---- unwrapping ----

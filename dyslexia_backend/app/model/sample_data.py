@@ -65,11 +65,27 @@ FAKE_FINDINGS = {
     ],
 }
 
+# Targets are not part of the metrics: layout_recs adds them from guidelines.py.
 FAKE_LAYOUT_METRICS = {
     "FAKE_SAMPLE_DATA": True,
-    "targets": {"min_line_height": 1.5, "min_font_size_px": 16, "max_line_length_chars": 70},
     "blocks": [
         {"block_id": "p-1", "font_size_px": 14, "line_height": 1.2, "line_length_chars": 96},
         {"block_id": "p-2", "font_size_px": 14, "line_height": 1.2, "line_length_chars": 96},
     ],
 }
+
+def _tiny_png() -> bytes:
+    """A valid 1x1 PNG, standing in for a screenshot in tests and the mock demo."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    signature = bytes.fromhex("89504e470d0a1a0a")
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)  # 1x1, 8-bit RGB
+    pixel_row = bytes.fromhex("00ffffff")  # filter byte 0, then one white pixel
+    return signature + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(pixel_row)) + chunk(b"IEND", b"")
+
+
+TINY_PNG = _tiny_png()
