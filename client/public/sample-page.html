@@ -1,0 +1,285 @@
+<!doctype html>
+<!-- Stand-in for a captured page, so the review screen can run without the capture server. Not real TVO content. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Two Sides to Every Coin (sample page)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f0f3fa;
+        color: #1f2933;
+        font:
+          15px/1.45 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      a {
+        color: inherit;
+      }
+      .site-header {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 10px 72px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+      }
+      .wordmark {
+        margin-right: auto;
+        color: #d6322c;
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .site-header a {
+        font-size: 14px;
+        text-decoration: none;
+      }
+      .content {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 20px 72px 48px;
+      }
+      .intro {
+        padding: 0 52px 28px;
+      }
+      .intro p {
+        margin: 0 0 8px;
+      }
+      .layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 32px;
+      }
+      .activity-nav {
+        flex: 0 0 200px;
+        border-radius: 12px;
+        background: #fff;
+      }
+      .strand {
+        padding: 16px;
+      }
+      .strand small,
+      .activity small {
+        display: block;
+        font-size: 11px;
+      }
+      .strand h2 {
+        margin: 28px 0 12px;
+        font-size: 13px;
+      }
+      .strand-text {
+        margin: 0;
+        font-size: 11.5px;
+      }
+      .activity {
+        display: block;
+        padding: 12px 16px;
+        border-top: 1px solid #e3e7ed;
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .activity.is-current {
+        background: #f0f3fa;
+      }
+      .activity.is-current span {
+        text-decoration: underline;
+        color: #17307a;
+      }
+      .lesson {
+        flex: 1;
+        min-width: 0;
+      }
+      .full-screen {
+        display: block;
+        margin: 0 0 8px auto;
+        padding: 6px 14px;
+        border: 1px solid #cbd2dc;
+        border-radius: 4px;
+        background: #fff;
+        font: inherit;
+        font-size: 14px;
+      }
+      .lesson-tabs {
+        display: flex;
+        align-items: center;
+        border-radius: 8px 8px 0 0;
+        background: #d0d0d0;
+        font-size: 13px;
+        overflow: hidden;
+      }
+      .lesson-tabs span {
+        margin-right: auto;
+        padding: 8px 16px 8px 30px;
+      }
+      .lesson-tabs a {
+        padding: 8px 11px;
+        color: #8c8c8c;
+        text-decoration: none;
+      }
+      .lesson-tabs a.is-current {
+        background: #fff;
+      }
+      .banner {
+        display: block;
+        line-height: 0;
+      }
+      .banner svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .lesson-body {
+        padding: 28px 50px 40px;
+        background: #fff;
+      }
+      .lesson-body h2,
+      .lesson-body h3 {
+        margin: 0 0 12px;
+        color: #1c5f8f;
+        font-size: 24px;
+        font-weight: 400;
+      }
+      .lesson-body h3 {
+        margin-top: 18px;
+        font-size: 22px;
+      }
+      .lesson-lead {
+        font-size: 14px;
+      }
+      .story {
+        font-size: 14px;
+      }
+      .story p {
+        margin: 0;
+      }
+      .story svg {
+        float: right;
+        width: 240px;
+        height: auto;
+        margin: 0 0 8px 20px;
+      }
+      @media (max-width: 800px) {
+        .site-header,
+        .content {
+          padding-inline: 16px;
+        }
+        .intro {
+          padding-inline: 0;
+        }
+        .layout {
+          flex-direction: column;
+        }
+        .activity-nav {
+          flex: none;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <span class="wordmark">tvo learn</span>
+      <a href="#">For Teachers</a>
+      <a href="#">Activities</a>
+      <a href="#">Collections</a>
+      <a href="#">Games</a>
+      <a href="#">Mathify</a>
+    </header>
+    <div class="content">
+      <div class="intro">
+        <p>
+          <strong>1. Minds On:</strong> Activates prior knowledge and introduces what students will explore.
+        </p>
+        <p>
+          <strong>2. Action:</strong> Offers a focused activity to explore the content and discover key
+          concepts.
+        </p>
+        <p>
+          <strong>3. Consolidation:</strong> Provides students with an opportunity to deepen understanding and
+          reflect on learning.
+        </p>
+      </div>
+      <div class="layout">
+        <nav class="activity-nav" aria-label="Learning activities">
+          <div class="strand">
+            <small>Learning Strand</small>
+            <h2>Financial Literacy</h2>
+            <p class="strand-text">
+              Students will learn to create a plan to reach financial goals and identify ways to maintain
+              balanced budgets. Students compare different ways that consumers can get value for their money
+              when spending, such as using reward programs or taking advantage of sales. Students investigate
+              the concepts of simple and compound interest using technology and explain how interest affects
+              long-term financial planning.
+            </p>
+          </div>
+          <div class="activities">
+            <a class="activity is-current" href="#" aria-current="page"
+              ><small>Learning Activity 1</small><span>Two Sides to Every Coin</span></a
+            >
+            <a class="activity" href="#"><small>Learning Activity 2</small>Setting Financial Goals</a>
+            <a class="activity" href="#"><small>Learning Activity 3</small>Building a Budget</a>
+            <a class="activity" href="#"><small>Learning Activity 4</small>Getting Value for Money</a>
+            <a class="activity" href="#"><small>Learning Activity 5</small>Simple Interest</a>
+            <a class="activity" href="#"><small>Learning Activity 6</small>Compound Interest</a>
+          </div>
+        </nav>
+        <main class="lesson">
+          <button class="full-screen" type="button">View full screen</button>
+          <div class="lesson-tabs">
+            <span>Two Sides to Every Coin</span>
+            <a class="is-current" href="#">Minds On</a>
+            <a href="#">Action</a>
+            <a href="#">Consolidation</a>
+          </div>
+          <div class="banner">
+            <svg viewBox="0 0 600 145" role="img" aria-label="Minds On">
+              <defs>
+                <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#ffffff" />
+                  <stop offset="1" stop-color="#a9d0f2" />
+                </linearGradient>
+              </defs>
+              <rect width="600" height="145" fill="url(#sky)" />
+              <path d="M0 125 C150 90 300 150 600 110 V145 H0 Z" fill="#6fb0e8" />
+              <circle cx="400" cy="70" r="30" fill="#6fb0e8" opacity="0.5" />
+              <circle cx="505" cy="62" r="42" fill="#2f7ec4" opacity="0.35" />
+              <text class="banner-title" x="14" y="66" fill="#2563c9" font-size="56" font-weight="700">
+                Minds On
+              </text>
+            </svg>
+          </div>
+          <div class="lesson-body">
+            <h2>Financial Situations of Two Families</h2>
+            <p class="lesson-lead">
+              Explore the following stories of two students' families and their financial situation:
+            </p>
+            <h3>Student One and their family</h3>
+            <div class="story">
+              <svg viewBox="0 0 240 160" role="img" aria-label="A wooden house in a green field">
+                <rect width="240" height="160" fill="#b8d0dc" />
+                <rect y="105" width="240" height="55" fill="#5d9140" />
+                <rect x="70" y="65" width="100" height="50" fill="#6b4226" />
+                <path d="M60 65 L120 28 L180 65 Z" fill="#46301f" />
+              </svg>
+              <p>
+                Student One and their family live in a small community on the western edge of Manitoulin
+                Island. The nearest grocery store is 40 minutes away from their home. Student One and their
+                family can only afford to buy groceries once every two weeks for two reasons. First, the
+                grocery store is far away, so every trip costs money for gas. Second, food in a small
+                community often costs more, so each trip has to be planned around the family's budget.
+              </p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
