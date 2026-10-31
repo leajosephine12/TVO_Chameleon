@@ -8,7 +8,8 @@ export type WcagCheck = 'pass' | 'fail' | 'review';
 /** How a suggestion changes the page once it is approved. */
 export type Patch =
   | { kind: 'css'; css: string }
-  | { kind: 'insert'; selector: string; position: 'before' | 'after' | 'prepend' | 'append'; html: string };
+  | { kind: 'insert'; selector: string; position: 'before' | 'after' | 'prepend' | 'append'; html: string }
+  | { kind: 'replaceText'; selector: string; find: string; text: string };
 
 export interface Suggestion {
   id: string;
@@ -18,7 +19,10 @@ export interface Suggestion {
   summary: string;
   category: Category;
   priority: Priority;
-  wcagCheck: WcagCheck;
+  /** Null when no WCAG check was reported for it. */
+  wcagCheck: WcagCheck | null;
+  /** Where the finding comes from, such as a tool or a guideline. */
+  evidence?: string;
   whatWouldChange: string;
   before: string;
   after: string;

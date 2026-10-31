@@ -654,6 +654,11 @@ h3.eyebrow {
   color: var(--muted);
 }
 
+.suggestion-detail > p.evidence {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* Narrow screens: stack the page and the panel, and scroll as one. */
 @media (max-width: 1000px) {
   .app {

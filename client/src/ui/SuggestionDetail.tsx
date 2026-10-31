@@ -33,8 +33,13 @@ export function SuggestionDetail({
       </p>
       <h2 id="suggestion-title">{suggestion.title}</h2>
       <p>{suggestion.summary}</p>
+      {suggestion.evidence && <p className="evidence">Evidence: {suggestion.evidence}</p>}
       <div className="chips">
-        <span className={`chip chip-${suggestion.wcagCheck}`}>{WCAG_CHECK_LABEL[suggestion.wcagCheck]}</span>
+        {suggestion.wcagCheck && (
+          <span className={`chip chip-${suggestion.wcagCheck}`}>
+            {WCAG_CHECK_LABEL[suggestion.wcagCheck]}
+          </span>
+        )}
         <span className="chip">
           <i className={`priority-bar priority-${suggestion.priority}`} aria-hidden="true" />
           {PRIORITY_LABEL[suggestion.priority]} priority

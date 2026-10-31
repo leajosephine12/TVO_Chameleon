@@ -2,7 +2,7 @@
 
 React + Vite + TypeScript frontend for reviewing accessibility suggestions on a TVO Learn page.
 
-Pages come from the capture server (`server.js` on the `PullingTVOWebsitesDraftVersion` branch). Suggestions do not come from a backend yet: only the stand-in `public/sample-page.html` has placeholder suggestions, and captured pages show an empty review panel. Decisions are kept in this browser's `localStorage`.
+Pages come from the capture server (`server.js` on the `PullingTVOWebsitesDraftVersion` branch). Suggestions do not come from a backend yet: only the stand-in `public/sample-page.html` has suggestions, and captured pages show an empty review panel. Its Dyslexia version uses copies of the backend team's sample outputs in `src/infrastructure/samples/`, and its General version uses placeholders. Decisions are kept in this browser's `localStorage`.
 
 ## Run it
 

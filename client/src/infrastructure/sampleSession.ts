@@ -1,11 +1,12 @@
 import type { ReviewedPage, ReviewVersion } from '../domain/review';
+import { dyslexiaSuggestions } from './sampleRecommendations';
 
 export const samplePage: ReviewedPage = {
   label: 'Sample page · Two Sides to Every Coin',
   url: '/sample-page.html',
 };
 
-/** Placeholder suggestions for public/sample-page.html, until real ones come from the backend. */
+/** Suggestions for public/sample-page.html: placeholders for General, the backend team's samples for Dyslexia. */
 export const sampleVersions: ReviewVersion[] = [
   {
     id: 'general',
@@ -126,94 +127,6 @@ export const sampleVersions: ReviewVersion[] = [
     shortName: 'dyslexia',
     note: "Ranked for the dyslexia version. Approved items go live for visitors who choose it, on top of the general version's approved changes.",
     builtOnVersionId: 'general',
-    suggestions: [
-      {
-        id: 'dyslexia-text-spacing',
-        title: 'Lesson text is tightly spaced',
-        location: 'Lesson text',
-        summary: 'Tight lines and letters make it easier to lose your place while reading.',
-        category: 'reading',
-        priority: 'high',
-        wcagCheck: 'pass',
-        whatWouldChange: 'Add space between lines, letters and words in the lesson text.',
-        before: 'Compact line, letter and word spacing.',
-        after: 'Line height of 1.8, with slightly wider letter and word spacing.',
-        targetSelector: '.story',
-        patches: [
-          {
-            kind: 'css',
-            css: '.lesson-body p { line-height: 1.8; letter-spacing: 0.03em; word-spacing: 0.1em; }',
-          },
-        ],
-      },
-      {
-        id: 'dyslexia-chunk-story',
-        title: 'Long story has no quick summary',
-        location: 'Student One story',
-        summary: 'Learners must read the whole paragraph before they know what it is about.',
-        category: 'cognitive',
-        priority: 'high',
-        wcagCheck: 'pass',
-        whatWouldChange: 'Add a one-sentence key idea above the story.',
-        before: 'The story starts straight away with a long paragraph.',
-        after: 'A short key idea appears first, followed by the full story.',
-        targetSelector: '.story',
-        patches: [
-          {
-            kind: 'css',
-            css: '.chameleon-key { margin: 0 0 14px; padding: 10px 14px; border-left: 4px solid #0b5a4f; background: #e7f3f0; }',
-          },
-          {
-            kind: 'insert',
-            selector: '.story',
-            position: 'prepend',
-            html: '<p class="chameleon-key"><strong>Key idea:</strong> Living far from a store makes groceries harder to afford.</p>',
-          },
-        ],
-      },
-      {
-        id: 'dyslexia-page-glare',
-        title: 'Pure white background can cause glare',
-        location: 'Lesson panel',
-        summary:
-          'Strong contrast between black text and pure white can make words seem to move for some readers.',
-        category: 'reading',
-        priority: 'medium',
-        wcagCheck: 'pass',
-        whatWouldChange: 'Use a soft cream background and keep the text dark.',
-        before: 'Dark text on pure white.',
-        after: 'Dark text on soft cream.',
-        targetSelector: '.lesson-body',
-        patches: [{ kind: 'css', css: '.lesson-body { background: #fbf6e9; }' }],
-      },
-      {
-        id: 'dyslexia-sidebar-text',
-        title: 'Sidebar text is small and dense',
-        location: 'Learning strand',
-        summary: 'The strand description is a long block of small text.',
-        category: 'reading',
-        priority: 'medium',
-        wcagCheck: 'pass',
-        whatWouldChange: 'Increase the size and line spacing of the sidebar text.',
-        before: '12px text in a compact block.',
-        after: '15px text with more space between lines.',
-        targetSelector: '.strand-text',
-        patches: [{ kind: 'css', css: '.strand-text { font-size: 15px; line-height: 1.7; }' }],
-      },
-      {
-        id: 'dyslexia-line-length',
-        title: 'Lines of text run long',
-        location: 'Lesson introduction',
-        summary: 'Long lines make it harder to find the start of the next line.',
-        category: 'reading',
-        priority: 'low',
-        wcagCheck: 'pass',
-        whatWouldChange: 'Limit lesson text to about 60 characters per line.',
-        before: 'Text fills the full width of the lesson.',
-        after: 'Text stops at a comfortable reading width.',
-        targetSelector: '.intro',
-        patches: [{ kind: 'css', css: '.intro p, .lesson-lead { max-width: 60ch; }' }],
-      },
-    ],
+    suggestions: dyslexiaSuggestions,
   },
 ];
