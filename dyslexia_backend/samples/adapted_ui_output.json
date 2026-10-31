@@ -1,0 +1,19 @@
+{
+  "changes": [
+    {
+      "block_id": "p-1",
+      "action": "replace_text",
+      "value": "Students will learn to create a plan to reach financial goals and identify ways to maintain balanced budgets. Students compare different ways that consumers can get value for their money. Examples are using reward programs or taking advantage of sales. Students investigate the concepts of simple and compound interest using technology, (for example, a spreadsheet program) and explain how interest affects long-term financial planning."
+    },
+    {
+      "block_id": "p-2",
+      "action": "replace_text",
+      "value": "Student One and their family live in a small community on the western edge of Manitoulin Island. The nearest grocery store is 40 minutes away from their home. Student One and their family can only afford to buy groceries once every two weeks for two reasons. First, the grocery store is far away from their home and second, their parents do not earn much money."
+    },
+    {
+      "block_id": "p-1",
+      "action": "set_style",
+      "value": "line-height: 1.6"
+    }
+  ]
+}
