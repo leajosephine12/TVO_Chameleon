@@ -84,7 +84,10 @@ app.get('/api/snapshots', async (req, res) => {
 
 app.get('/api/config', (req, res) => res.json({ allowedHosts: ALLOWED_HOSTS }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+// The review client (client/, built with `npm run build:client`). It is served from the same
+// origin as the captured pages, which is what lets it apply changes inside them.
+const CLIENT_DIST = path.join(__dirname, 'client', 'dist');
+app.use(express.static(CLIENT_DIST));
 
 app.listen(PORT, () => {
     console.log('TVO capture running at http://localhost:' + PORT);
