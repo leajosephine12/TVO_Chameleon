@@ -277,7 +277,7 @@ export async function expandAll(frame, { strict = false } = {}) {
  * in different letter case: "link_mindson" opens "mindsOn"). Links that really go somewhere
  * are never treated as tabs.
  *
- * @returns {{count: number, initialIndex: number}} how many tabs there are and which one is showing
+ * @returns {{count: number, initialIndexes: number[]}} how many tabs there are and, for each group of tabs, which one is showing
  */
 function tagTabs() {
   const STYLE_PROPERTIES = ['background-color', 'color', 'font-weight', 'border-bottom-color', 'opacity'];
@@ -299,8 +299,12 @@ function tagTabs() {
       .join('');
   };
 
-  const isPlaceholderLink = (element) =>
-    element.tagName !== 'A' || ['', '#'].includes((element.getAttribute('href') || '').trim());
+  // A tab is a button, or a link that goes nowhere or only to its own panel ("#tab1_2").
+  // Accordion headers (aria-expanded) also link to their panel, but several can be open at once.
+  const staysOnPage = (element, panel) =>
+    element.tagName !== 'A' ||
+    (!element.hasAttribute('aria-expanded') &&
+      ['', '#', `#${panel.id}`].includes((element.getAttribute('href') || '').trim()));
 
   // Step 1: pair every tab with the panel it shows.
   const tabs = [];
@@ -308,38 +312,81 @@ function tagTabs() {
   document.querySelectorAll(candidates).forEach((trigger) => {
     const panelId = trigger.getAttribute('aria-controls') || trigger.id.replace(/^link_/, '');
     const panel = findById(panelId);
-    const isUsable = panel && panel !== trigger && !panel.contains(trigger) && isPlaceholderLink(trigger);
+    const isUsable = panel && panel !== trigger && !panel.contains(trigger) && staysOnPage(trigger, panel);
     if (isUsable && !tabs.some((tab) => tab.panel === panel)) tabs.push({ trigger, panel });
   });
-  if (tabs.length < 2) return { count: 0, initialIndex: 0 };
+  if (tabs.length < 2) return { count: 0, initialIndexes: [] };
 
-  // Step 2: tag the tabs. Panels sharing a parent form one group.
-  const groupParents = [...new Set(tabs.map((tab) => tab.panel.parentElement))];
-  const initialIndex = Math.max(
-    0,
-    tabs.findIndex((tab) => isShown(tab.panel)),
+  // Step 2: tag the tabs. Panels sharing a parent form one group, and each group has one tab showing at first.
+  const groups = [...new Set(tabs.map((tab) => tab.panel.parentElement))].map((parent) =>
+    tabs.filter((tab) => tab.panel.parentElement === parent),
   );
-  const initialTab = tabs[initialIndex];
-  const otherTab = tabs.find((tab) => tab !== initialTab);
+  const initialIndexes = [];
+  groups.forEach((groupTabs, groupIndex) => {
+    const initialTab = groupTabs.find((tab) => isShown(tab.panel)) || groupTabs[0];
+    const otherTab = groupTabs.find((tab) => tab !== initialTab);
 
-  tabs.forEach(({ trigger, panel }, index) => {
-    panel.setAttribute('data-tab-panel', String(groupParents.indexOf(panel.parentElement)));
-    trigger.setAttribute('data-tab-trigger', panel.id);
-    trigger.setAttribute('data-tab-order', String(index));
+    groupTabs.forEach(({ trigger, panel }) => {
+      panel.setAttribute('data-tab-panel', String(groupIndex));
+      trigger.setAttribute('data-tab-trigger', panel.id);
+    });
+    initialTab.panel.setAttribute('data-tab-default', '');
+    initialTab.trigger.setAttribute('data-tab-default-trigger', String(groupIndex));
+    // How a selected tab looks compared with an unselected one, for the copy's CSS.
+    if (otherTab) {
+      initialTab.trigger.setAttribute('data-tab-selected-style', styleDifference(initialTab.trigger, otherTab.trigger));
+      initialTab.trigger.setAttribute('data-tab-unselected-style', styleDifference(otherTab.trigger, initialTab.trigger));
+    }
+    initialIndexes.push(tabs.indexOf(initialTab));
   });
-  initialTab.panel.setAttribute('data-tab-default', '');
-  initialTab.trigger.setAttribute('data-tab-default-trigger', '');
-  // How a selected tab looks compared with an unselected one, for the copy's CSS.
-  initialTab.trigger.setAttribute(
-    'data-tab-selected-style',
-    styleDifference(initialTab.trigger, otherTab.trigger),
-  );
-  initialTab.trigger.setAttribute(
-    'data-tab-unselected-style',
-    styleDifference(otherTab.trigger, initialTab.trigger),
-  );
+  tabs.forEach(({ trigger }, index) => trigger.setAttribute('data-tab-order', String(index)));
 
-  return { count: tabs.length, initialIndex };
+  return { count: tabs.length, initialIndexes };
+}
+
+/**
+ * Quiz widgets that show one question at a time ("Question 1 of 4" with next/previous
+ * arrows) only have the current question in the page. The copy cannot press the arrows
+ * (scripts are blocked), so this steps through the questions and leaves a static copy of
+ * each one under the first, with its own "Question N of M" label and the arrows hidden.
+ *
+ * @returns {Promise<number>} how many extra questions were copied
+ */
+function copyQuestionSteps() {
+  const STEP_PAUSE_MS = 250; // the widget redraws its question after each click
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /** Total number of questions, read from the "Question 1 of 4" label. */
+  const questionCount = (label) => Number((label.textContent.match(/of\s+(\d+)/) || [])[1]);
+
+  return (async () => {
+    let copied = 0;
+    for (const label of document.querySelectorAll('.que-indicator')) {
+      const total = questionCount(label);
+      const step = label.closest('.mc-padding-container');
+      if (!step || total < 2 || !step.querySelector('.next-btn')) continue;
+
+      // Step forward through the questions, keeping a static copy of each one after the first.
+      let insertAfter = step;
+      for (let number = 2; number <= total; number += 1) {
+        step.querySelector('.next-btn')?.click();
+        await pause(STEP_PAUSE_MS);
+        const copy = step.cloneNode(true);
+        copy.setAttribute('data-question-copy', String(number));
+        copy.querySelectorAll('.next-btn, .prev-btn').forEach((button) => button.setAttribute('hidden', ''));
+        insertAfter.after(copy);
+        insertAfter = copy;
+        copied += 1;
+      }
+
+      // Go back to question 1 so the page ends up as it started.
+      for (let number = 2; number <= total; number += 1) {
+        step.querySelector('.prev-btn')?.click();
+        await pause(STEP_PAUSE_MS);
+      }
+    }
+    return copied;
+  })();
 }
 
 /**
@@ -409,8 +456,9 @@ async function openTab(frame, index) {
 // plain CSS, so every tab has to be in it). Returns the height of the tallest tab, or 0
 // when there are no tabs. `strict` keeps the main page's menus closed (see expandAll).
 async function visitEachTab(frame, { strict = false } = {}) {
+    await frame.evaluate(copyQuestionSteps).catch(() => 0); // quiz questions shown one at a time
     await frame.evaluate(tagFlyouts).catch(() => 0); // side panels, opened by a link in the copy
-    const { count, initialIndex } = await frame.evaluate(tagTabs).catch(() => ({ count: 0, initialIndex: 0 }));
+    const { count, initialIndexes } = await frame.evaluate(tagTabs).catch(() => ({ count: 0, initialIndexes: [] }));
     if (count === 0) return 0;
 
     let tallestTab = 0;
@@ -429,7 +477,7 @@ async function visitEachTab(frame, { strict = false } = {}) {
         }).catch(() => 0);
         tallestTab = Math.max(tallestTab, height);
     }
-    await openTab(frame, initialIndex); // leave the page on the tab it started on
+    for (const initialIndex of initialIndexes) await openTab(frame, initialIndex); // leave each group on the tab it started on
     return tallestTab;
 }
 
@@ -1022,9 +1070,6 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         '[data-tab-panel][data-tab-default]{display:block !important}',
         '[data-tab-panel]:target{display:block !important}',
       ];
-      const selected = document.querySelector('[data-tab-default-trigger][data-tab-selected-style]');
-      const selectedStyle = selected ? selected.getAttribute('data-tab-selected-style') : '';
-      const unselectedStyle = selected ? selected.getAttribute('data-tab-unselected-style') : '';
       const important = (declarations) => declarations.replace(/;/g, ' !important;');
 
       // The page's script showed and hid panels with inline styles; the CSS above takes over.
@@ -1038,10 +1083,15 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         linkTriggerToPanel(trigger, panelId);
         if (trigger.hasAttribute('data-tab-default-trigger')) return;
 
-        // While this tab's panel is the target, the first tab stops looking selected and this one starts to.
+        // While this tab's panel is the target, the first tab of its group stops looking selected and this one starts to.
+        const group = document.getElementById(panelId)?.getAttribute('data-tab-panel');
+        const firstTab = document.querySelector(`[data-tab-default-trigger="${group}"]`);
+        if (!firstTab) return;
+        const selectedStyle = firstTab.getAttribute('data-tab-selected-style') || '';
+        const unselectedStyle = firstTab.getAttribute('data-tab-unselected-style') || '';
         const whenTarget = `body:has(#${CSS.escape(panelId)}:target)`;
         rules.push(`${whenTarget} [data-tab-trigger="${panelId}"]{${important(selectedStyle)}}`);
-        rules.push(`${whenTarget} [data-tab-default-trigger]{${important(unselectedStyle)}}`);
+        rules.push(`${whenTarget} [data-tab-default-trigger="${group}"]{${important(unselectedStyle)}}`);
       });
 
       // The panel shown at first hides again once another panel of its group is the target.
