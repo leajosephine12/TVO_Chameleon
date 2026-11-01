@@ -205,6 +205,30 @@ p {
   white-space: nowrap;
 }
 
+.fullscreen-button {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fullscreen-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* In full screen the page fills the whole screen under the address bar. */
+.preview:fullscreen {
+  border-radius: 0;
+}
+
+.preview:fullscreen iframe {
+  flex: 1;
+  height: auto;
+}
+
 .preview iframe {
   flex: 1;
   width: 100%;
