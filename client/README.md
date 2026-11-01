@@ -2,7 +2,7 @@
 
 React + Vite + TypeScript frontend for reviewing accessibility suggestions on a TVO Learn page.
 
-Pages come from the capture server (`server.js` on the `PullingTVOWebsitesDraftVersion` branch). Suggestions do not come from a backend yet: only the stand-in `public/sample-page.html` has suggestions, and captured pages show an empty review panel. Its Dyslexia version uses copies of the backend team's sample outputs in `src/infrastructure/samples/`, and its General version uses placeholders. Decisions are kept in this browser's `localStorage`.
+Pages come from the capture server (`server.js` in the repository root). Suggestions do not come from a backend yet: only the stand-in `public/sample-page.html` has suggestions, and captured pages show an empty review panel. Its Dyslexia version uses copies of the backend team's sample outputs in `src/infrastructure/samples/`, and its General version uses placeholders. Decisions are kept in this browser's `localStorage`.
 
 ## Run it
 
@@ -14,7 +14,7 @@ npm run dev
 
 Open http://localhost:5173. The sample page works on its own.
 
-To capture real pages, also run the capture server on port 3000. In a checkout that has `server.js`:
+To capture real pages, also run the capture server on port 3000, from the repository root:
 
 ```
 npm install
@@ -23,6 +23,8 @@ npm start
 ```
 
 The dev server forwards `/api` and `/snapshots` to it. A capture can take a few minutes.
+
+To run everything from one address, build the client (`npm run build:client` in the repository root) and open http://localhost:3000: the capture server then serves the client too.
 
 ## Scripts
 

@@ -6,7 +6,8 @@
   "description": "Paste a TVO Learn link, get a static, scriptless copy of the page that you can apply changes on top of.",
   "scripts": {
     "start": "node server.js",
-    "capture": "node cli.js"
+    "capture": "node cli.js",
+    "build:client": "npm --prefix client install && npm --prefix client run build"
   },
   "engines": {
     "node": ">=18"
