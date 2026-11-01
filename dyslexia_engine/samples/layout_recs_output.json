@@ -1,0 +1,13 @@
+[
+  {
+    "id": "r3",
+    "block_id": "p-1",
+    "type": "line_spacing",
+    "original": "line-height: 1.2",
+    "suggestion": "line-height: 1.6",
+    "rationale": "line spacing is 1.2; target >= 1.5",
+    "evidence": "DOM metrics / WCAG 1.4.12",
+    "severity": "medium",
+    "status": "pending"
+  }
+]
