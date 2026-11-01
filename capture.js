@@ -243,6 +243,133 @@ export async function expandAll(frame, { strict = false } = {}) {
     }, { strict }).catch(() => 0);
 }
 
+/**
+ * Finds the tabs on the page and tags them for the frozen copy (see
+ * makeTabsSwitchWithoutScripts in freezePage.js).
+ *
+ * A tab is recognised by ARIA (role="tab" or aria-selected, plus aria-controls) or by the
+ * lesson player's convention of a link "link_<panelId>" next to a panel "<panelId>" (written
+ * in different letter case: "link_mindson" opens "mindsOn"). Links that really go somewhere
+ * are never treated as tabs.
+ *
+ * @returns {{count: number, initialIndex: number}} how many tabs there are and which one is showing
+ */
+function tagTabs() {
+  const STYLE_PROPERTIES = ['background-color', 'color', 'font-weight', 'border-bottom-color', 'opacity'];
+
+  const isShown = (element) =>
+    getComputedStyle(element).display !== 'none' && element.getClientRects().length > 0;
+
+  /** Finds an element by id, ignoring letter case when there is no exact match. */
+  const findById = (id) =>
+    document.getElementById(id) ||
+    [...document.querySelectorAll('[id]')].find((element) => element.id.toLowerCase() === id.toLowerCase());
+
+  /** The CSS declarations in `from` that differ from `other`, as "property:value;" text. */
+  const styleDifference = (from, other) => {
+    const own = getComputedStyle(from);
+    const theirs = getComputedStyle(other);
+    return STYLE_PROPERTIES.filter((name) => own.getPropertyValue(name) !== theirs.getPropertyValue(name))
+      .map((name) => `${name}:${own.getPropertyValue(name)};`)
+      .join('');
+  };
+
+  const isPlaceholderLink = (element) =>
+    element.tagName !== 'A' || ['', '#'].includes((element.getAttribute('href') || '').trim());
+
+  // Step 1: pair every tab with the panel it shows.
+  const tabs = [];
+  const candidates = 'a[id^="link_"], [role="tab"][aria-controls], [aria-controls][aria-selected]';
+  document.querySelectorAll(candidates).forEach((trigger) => {
+    const panelId = trigger.getAttribute('aria-controls') || trigger.id.replace(/^link_/, '');
+    const panel = findById(panelId);
+    const isUsable = panel && panel !== trigger && !panel.contains(trigger) && isPlaceholderLink(trigger);
+    if (isUsable && !tabs.some((tab) => tab.panel === panel)) tabs.push({ trigger, panel });
+  });
+  if (tabs.length < 2) return { count: 0, initialIndex: 0 };
+
+  // Step 2: tag the tabs. Panels sharing a parent form one group.
+  const groupParents = [...new Set(tabs.map((tab) => tab.panel.parentElement))];
+  const initialIndex = Math.max(
+    0,
+    tabs.findIndex((tab) => isShown(tab.panel)),
+  );
+  const initialTab = tabs[initialIndex];
+  const otherTab = tabs.find((tab) => tab !== initialTab);
+
+  tabs.forEach(({ trigger, panel }, index) => {
+    panel.setAttribute('data-tab-panel', String(groupParents.indexOf(panel.parentElement)));
+    trigger.setAttribute('data-tab-trigger', panel.id);
+    trigger.setAttribute('data-tab-order', String(index));
+  });
+  initialTab.panel.setAttribute('data-tab-default', '');
+  initialTab.trigger.setAttribute('data-tab-default-trigger', '');
+  // How a selected tab looks compared with an unselected one, for the copy's CSS.
+  initialTab.trigger.setAttribute(
+    'data-tab-selected-style',
+    styleDifference(initialTab.trigger, otherTab.trigger),
+  );
+  initialTab.trigger.setAttribute(
+    'data-tab-unselected-style',
+    styleDifference(otherTab.trigger, initialTab.trigger),
+  );
+
+  return { count: tabs.length, initialIndex };
+}
+
+/**
+ * Clicks the tab tagged by tagTabs with this index. This is the fallback for a tab that
+ * cannot take a real mouse click (see openTab in capture/tabs.js).
+ *
+ * @param {number} index  position of the tab in the order tagTabs found them
+ */
+function showTab(index) {
+  const trigger = document.querySelector(`[data-tab-order="${index}"]`);
+  if (trigger) trigger.click();
+}
+
+const TAB_CLICK_TIMEOUT_MS = 3000;
+const TAB_REACTION_PAUSE_MS = 300; // the page's own click handler and any lazy loading
+
+// Opens one tab. Some tab widgets only react to a real mouse press (not to a scripted
+// click), so a real click comes first; a scripted click is the fallback.
+async function openTab(frame, index) {
+    try {
+        await frame.locator(`[data-tab-order="${index}"]`).click({ timeout: TAB_CLICK_TIMEOUT_MS });
+    } catch {
+        await frame.evaluate(showTab, index).catch(() => { });
+    }
+    await sleep(TAB_REACTION_PAUSE_MS);
+}
+
+// Opens every tab of a tabbed layout, one at a time, so each tab's pictures, styles and
+// collapsed sections are loaded before the page is frozen (the copy switches tabs with
+// plain CSS, so every tab has to be in it). Returns the height of the tallest tab, or 0
+// when there are no tabs. `strict` keeps the main page's menus closed (see expandAll).
+async function visitEachTab(frame, { strict = false } = {}) {
+    const { count, initialIndex } = await frame.evaluate(tagTabs).catch(() => ({ count: 0, initialIndex: 0 }));
+    if (count === 0) return 0;
+
+    let tallestTab = 0;
+    for (let index = 0; index < count; index++) {
+        await openTab(frame, index);
+        await expandAll(frame, { strict });
+        await settleFrame(frame);
+        const height = await frame.evaluate(() => {
+            let bottom = 0;
+            for (const el of document.body.querySelectorAll('*')) {
+                if (getComputedStyle(el).position === 'fixed') continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.height > 0) bottom = Math.max(bottom, rect.bottom + window.scrollY);
+            }
+            return Math.ceil(bottom);
+        }).catch(() => 0);
+        tallestTab = Math.max(tallestTab, height);
+    }
+    await openTab(frame, initialIndex); // leave the page on the tab it started on
+    return tallestTab;
+}
+
 // Starts loading a frame that was built without a src (a lazy lesson preview) and waits
 // for it to leave about:blank. Loading these one at a time keeps a lesson server that
 // copes badly with parallel requests happy; a failed load is retried twice.
@@ -385,6 +512,8 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
             log('Opened ' + pageOpened + ' collapsed section(s) on the page');
             await settleFrame(page.mainFrame());
         }
+        // Tab widgets: every tab must be in the copy, not only the one showing.
+        await visitEachTab(page.mainFrame(), { strict: true });
         if (page.url() !== pageUrlBefore) warn('The page navigated while opening its sections; the copy may be incomplete.');
 
         // ---- Embedded frames: load them fully before anything is saved -------
@@ -416,12 +545,27 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
                     log('Opened ' + opened + ' collapsed section(s) in the embedded content');
                     await settleFrame(frame);
                 }
-                // Make the iframe tall enough to show everything it now holds, unless it
-                // fills a panel of fixed size (the lesson previews): those scroll inside.
+                // Visit every tab so its pictures load; the box must fit the tallest one.
+                const tallestTab = await visitEachTab(frame);
+                // Fit the iframe to what it holds, growing or shrinking it (the page may have
+                // left it taller than its content), unless it fills a panel of fixed size
+                // (the lesson previews): those scroll inside.
                 const fillsPanel = await handles[i].evaluate((el) => getComputedStyle(el).position === 'absolute').catch(() => false);
-                const need = await frame.evaluate(() => Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))).catch(() => 0);
+                const measured = await frame.evaluate(() => {
+                    // The document's scrollHeight never drops below the iframe's own height, so
+                    // measure where the content actually ends: the lowest edge of any element
+                    // that takes part in the layout (fixed overlays and empty boxes are ignored).
+                    let bottom = 0;
+                    for (const el of document.body.querySelectorAll('*')) {
+                        if (getComputedStyle(el).position === 'fixed') continue;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.height > 0) bottom = Math.max(bottom, rect.bottom + window.scrollY);
+                    }
+                    return Math.ceil(bottom);
+                }).catch(() => 0);
+                const need = Math.max(measured, tallestTab);
                 const have = (await handles[i].boundingBox().catch(() => null) || { height: 0 }).height;
-                if (!fillsPanel && need > have + 4 && need < 20000) {
+                if (!fillsPanel && need >= 100 && Math.abs(need - have) > 4 && need < 20000) {
                     await handles[i].evaluate((el, h) => { el.style.height = h + 'px'; el.setAttribute('height', String(h)); }, need).catch(() => { });
                 }
                 frameJobs.push({ i, handle: handles[i], frame, host });
@@ -774,6 +918,65 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         a.removeAttribute('target');
     });
     document.querySelectorAll('form').forEach((f) => f.removeAttribute('action'));
+
+    // 8b. Tabs found by tagTabs switch with plain CSS: each tab links to its panel (#id)
+    //     and :target shows the linked panel, so the copy works with scripts blocked.
+    (() => {
+      const panels = [...document.querySelectorAll('[data-tab-panel]')];
+      if (panels.length === 0) return;
+
+      const rules = [
+        '[data-tab-panel]{display:none !important}',
+        '[data-tab-panel][data-tab-default]{display:block !important}',
+        '[data-tab-panel]:target{display:block !important}',
+      ];
+      const selected = document.querySelector('[data-tab-default-trigger][data-tab-selected-style]');
+      const selectedStyle = selected ? selected.getAttribute('data-tab-selected-style') : '';
+      const unselectedStyle = selected ? selected.getAttribute('data-tab-unselected-style') : '';
+      /** Makes the tab a link to its panel; tabs that are not links (a <li>, a <button>) get one inside. */
+      const linkTabToPanel = (trigger, panelId) => {
+        if (trigger.tagName === 'A') {
+          trigger.setAttribute('href', `#${panelId}`);
+          return;
+        }
+        const link = document.createElement('a');
+        link.setAttribute('href', `#${panelId}`);
+        link.style.cssText = 'display:block;color:inherit;font:inherit;text-decoration:none;';
+        link.append(...trigger.childNodes);
+        trigger.append(link);
+      };
+
+      const important = (declarations) => declarations.replace(/;/g, ' !important;');
+
+      // The page's script showed and hid panels with inline styles; the CSS above takes over.
+      panels.forEach((panel) => {
+        panel.style.removeProperty('display');
+        if (!panel.getAttribute('style')) panel.removeAttribute('style');
+      });
+
+      document.querySelectorAll('[data-tab-trigger]').forEach((trigger) => {
+        const panelId = trigger.getAttribute('data-tab-trigger');
+        linkTabToPanel(trigger, panelId);
+        if (trigger.hasAttribute('data-tab-default-trigger')) return;
+
+        // While this tab's panel is the target, the first tab stops looking selected and this one starts to.
+        const whenTarget = `body:has(#${CSS.escape(panelId)}:target)`;
+        rules.push(`${whenTarget} [data-tab-trigger="${panelId}"]{${important(selectedStyle)}}`);
+        rules.push(`${whenTarget} [data-tab-default-trigger]{${important(unselectedStyle)}}`);
+      });
+
+      // The panel shown at first hides again once another panel of its group is the target.
+      new Set(panels.map((panel) => panel.getAttribute('data-tab-panel'))).forEach((group) => {
+        const panelsOfGroup = `[data-tab-panel="${group}"]`;
+        rules.push(
+          `body:has(${panelsOfGroup}:target) ${panelsOfGroup}[data-tab-default]:not(:target){display:none !important}`,
+        );
+      });
+
+      const style = document.createElement('style');
+      style.textContent = rules.join('\n');
+      document.head.append(style);
+    })();
 
     // 9. Cookie and consent banners are not part of the page content.
     document.querySelectorAll('body *').forEach((el) => {
