@@ -155,13 +155,23 @@ export async function expandAll(frame, { strict = false } = {}) {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         let opened = 0;
 
+        // Menus, headers, dialogs and video players also use aria-expanded, but they are page
+        // chrome, not content: opening them would only leave their pop-ups open in the copy.
+        const PAGE_CHROME = 'nav, header, dialog, [role="navigation"], [role="menu"], [role="dialog"], .video-js, [class*="vjs-"]';
         const isAccordionHeading = (el) => {
+            if (el.closest(PAGE_CHROME) || el.hasAttribute('aria-haspopup')) return false;
             if (!strict) return el.matches('button, [role="button"], summary, a');
             return el.matches('button, [role="button"], summary')
-                && !el.hasAttribute('aria-haspopup')
-                && !el.closest('nav, header, dialog, [role="navigation"], [role="menu"], [role="dialog"]')
                 && !!document.getElementById(el.getAttribute('aria-controls') || '');
         };
+
+        // Clicking can hide what was showing (a choice board swaps its menu for the chosen panel).
+        // Remember what was visible, so that it can be put back once everything has been opened.
+        const MIN_TEXT_TO_RESTORE = 20;
+        const visibleAtStart = [...document.body.querySelectorAll('*')]
+            .filter((el) => getComputedStyle(el).display !== 'none' && !el.closest(PAGE_CHROME))
+            .filter((el) => el.children.length > 0 && (el.textContent || '').trim().length > MIN_TEXT_TO_RESTORE)
+            .map((el) => ({ el, display: getComputedStyle(el).display }));
 
         document.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; opened++; });
 
@@ -210,6 +220,17 @@ export async function expandAll(frame, { strict = false } = {}) {
             opened++;
         });
 
+        // Some widgets (choice boards, flyouts) hide their panels with CSS that a click does not
+        // undo once the widget has shown another panel: show whatever is still hidden.
+        document.querySelectorAll('[aria-controls][aria-expanded]:not([aria-selected])').forEach((h) => {
+            const p = document.getElementById(h.getAttribute('aria-controls'));
+            const hiddenByCss = p && getComputedStyle(p).display === 'none';
+            if (hiddenByCss && !p.hasAttribute('data-src') && isAccordionHeading(h)) {
+                p.style.setProperty('display', 'block');
+                opened++;
+            }
+        });
+
         // Lesson previews: every panel with a data-src gets one iframe aimed at that lesson.
         // The page may ship the iframe already (empty, or pointing at the wrong place), so an
         // existing one is reused; otherwise one is built, copying the look of a sibling.
@@ -239,6 +260,10 @@ export async function expandAll(frame, { strict = false } = {}) {
             if (heading) heading.setAttribute('aria-expanded', 'true');
             opened++;
         });
+        visibleAtStart.forEach(({ el, display }) => {
+            if (getComputedStyle(el).display === 'none') el.style.setProperty('display', display);
+        });
+
         return opened;
     }, { strict }).catch(() => 0);
 }
@@ -328,6 +353,43 @@ function showTab(index) {
   if (trigger) trigger.click();
 }
 
+/**
+ * Finds flyout panels: a hidden panel (like the lesson's "Learning Goals" side panel) that a
+ * button named "open<PanelName>" shows. The pair is tagged for the frozen copy (see
+ * makeFlyoutsOpenWithoutScripts in freezePage.js), which opens the panel through a link.
+ *
+ * @returns {number} how many flyouts were found
+ */
+function tagFlyouts() {
+  const MIN_NAME_LENGTH = 5; // "openA" would match far too much
+  const MIN_PANEL_TEXT = 50;
+  let found = 0;
+
+  document.querySelectorAll('a[id^="open"], button[id^="open"]').forEach((button) => {
+    const name = button.id.slice('open'.length).toLowerCase();
+    const isPlaceholderLink =
+      button.tagName !== 'A' || ['', '#'].includes((button.getAttribute('href') || '').trim());
+    if (name.length < MIN_NAME_LENGTH || !isPlaceholderLink) return;
+
+    // Several ids can end the same way ("openX", "closeX", "xPanel"): the panel is the hidden one with content.
+    const isHiddenWithContent = (element) =>
+      getComputedStyle(element).display === 'none' && (element.textContent || '').trim().length >= MIN_PANEL_TEXT;
+    const panel = [...document.querySelectorAll('[id]')].find(
+      (element) =>
+        element !== button &&
+        !element.contains(button) &&
+        element.id.toLowerCase().endsWith(name) &&
+        isHiddenWithContent(element),
+    );
+    if (!panel) return;
+
+    panel.setAttribute('data-flyout-panel', '');
+    button.setAttribute('data-flyout-trigger', panel.id);
+    found += 1;
+  });
+  return found;
+}
+
 const TAB_CLICK_TIMEOUT_MS = 3000;
 const TAB_REACTION_PAUSE_MS = 300; // the page's own click handler and any lazy loading
 
@@ -347,6 +409,7 @@ async function openTab(frame, index) {
 // plain CSS, so every tab has to be in it). Returns the height of the tallest tab, or 0
 // when there are no tabs. `strict` keeps the main page's menus closed (see expandAll).
 async function visitEachTab(frame, { strict = false } = {}) {
+    await frame.evaluate(tagFlyouts).catch(() => 0); // side panels, opened by a link in the copy
     const { count, initialIndex } = await frame.evaluate(tagTabs).catch(() => ({ count: 0, initialIndex: 0 }));
     if (count === 0) return 0;
 
@@ -893,6 +956,10 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         f.removeAttribute('data-embed');
         if (e && e.kind === 'frame') {
             ['srcdoc', 'allow', 'loading', 'sandbox', 'allowfullscreen'].forEach((a) => f.removeAttribute(a));
+            // The copy's frame can be narrower than the original, so its text wraps over more
+            // lines: never hide what does not fit, let the frame scroll instead.
+            f.removeAttribute('scrolling');
+            f.style.removeProperty('overflow');
             f.setAttribute('src', e.file);
         } else if (e && e.kind === 'image') {
             const r = f.getBoundingClientRect();
@@ -907,7 +974,18 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
             placeholder(f, 'Embedded content (' + host + ')');
         }
     });
-    document.querySelectorAll('video, audio').forEach((m) => placeholder(m, m.tagName === 'VIDEO' ? 'Video' : 'Audio'));
+    document.querySelectorAll('video, audio').forEach((m) => {
+        // A player's menus and controls are part of its wrapper, so the whole player is replaced.
+        const player = m.closest('.video-js') || m;
+        const transcript = [...player.querySelectorAll('.bcTextContainer')]
+            .map((part) => (part.textContent || '').replace(/\s+/g, ' ').trim())
+            .join(' ');
+        const cid = player.getAttribute('data-cid');
+        placeholder(player, m.tagName === 'VIDEO' ? 'Video' : 'Audio');
+        // The words of a video's captions and descriptions stay in the copy, out of sight.
+        const box = document.querySelector(`[data-cid="${cid}"]`);
+        if (box && transcript) box.setAttribute('data-transcript', transcript);
+    });
     document.querySelectorAll('object, embed').forEach((m) => placeholder(m, 'Embedded object'));
 
     // 8. Links become inert, keeping the original address for later.
@@ -918,6 +996,20 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
         a.removeAttribute('target');
     });
     document.querySelectorAll('form').forEach((f) => f.removeAttribute('action'));
+
+    // Makes a tab or flyout button a link to its panel; one that is not a link (a <li>, a
+    // <button>) gets a link inside.
+    const linkTriggerToPanel = (trigger, panelId) => {
+        if (trigger.tagName === 'A') {
+            trigger.setAttribute('href', `#${panelId}`);
+            return;
+        }
+        const link = document.createElement('a');
+        link.setAttribute('href', `#${panelId}`);
+        link.style.cssText = 'display:block;color:inherit;font:inherit;text-decoration:none;';
+        link.append(...trigger.childNodes);
+        trigger.append(link);
+    };
 
     // 8b. Tabs found by tagTabs switch with plain CSS: each tab links to its panel (#id)
     //     and :target shows the linked panel, so the copy works with scripts blocked.
@@ -933,19 +1025,6 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
       const selected = document.querySelector('[data-tab-default-trigger][data-tab-selected-style]');
       const selectedStyle = selected ? selected.getAttribute('data-tab-selected-style') : '';
       const unselectedStyle = selected ? selected.getAttribute('data-tab-unselected-style') : '';
-      /** Makes the tab a link to its panel; tabs that are not links (a <li>, a <button>) get one inside. */
-      const linkTabToPanel = (trigger, panelId) => {
-        if (trigger.tagName === 'A') {
-          trigger.setAttribute('href', `#${panelId}`);
-          return;
-        }
-        const link = document.createElement('a');
-        link.setAttribute('href', `#${panelId}`);
-        link.style.cssText = 'display:block;color:inherit;font:inherit;text-decoration:none;';
-        link.append(...trigger.childNodes);
-        trigger.append(link);
-      };
-
       const important = (declarations) => declarations.replace(/;/g, ' !important;');
 
       // The page's script showed and hid panels with inline styles; the CSS above takes over.
@@ -956,7 +1035,7 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
 
       document.querySelectorAll('[data-tab-trigger]').forEach((trigger) => {
         const panelId = trigger.getAttribute('data-tab-trigger');
-        linkTabToPanel(trigger, panelId);
+        linkTriggerToPanel(trigger, panelId);
         if (trigger.hasAttribute('data-tab-default-trigger')) return;
 
         // While this tab's panel is the target, the first tab stops looking selected and this one starts to.
@@ -976,6 +1055,18 @@ function freezeInPage({ map, embeds, cidPrefix, TRANSPARENT_GIF }) {
       const style = document.createElement('style');
       style.textContent = rules.join('\n');
       document.head.append(style);
+    })();
+
+    // 8c. Flyout panels (like "Learning Goals") found by tagFlyouts open when their button is
+    //     followed: the button links to the panel and :target shows it.
+    (() => {
+        const buttons = document.querySelectorAll('[data-flyout-trigger]');
+        if (buttons.length === 0) return;
+        buttons.forEach((button) => linkTriggerToPanel(button, button.getAttribute('data-flyout-trigger')));
+        const style = document.createElement('style');
+        // The page gives a closed flyout display:none and height:0 as inline styles.
+        style.textContent = '[data-flyout-panel]:target{display:block !important;height:auto !important}';
+        document.head.append(style);
     })();
 
     // 9. Cookie and consent banners are not part of the page content.

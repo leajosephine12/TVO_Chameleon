@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Patch } from '../domain/review';
 import { applyPatches } from './applyPatches';
+import { fitEmbeddedFrames } from './fitEmbeddedFrames';
 
 interface Props {
   url: string;
@@ -18,6 +19,9 @@ export function PagePreview({ url, addressLabel, patches, highlightSelector, con
   useEffect(() => {
     if (doc) applyPatches(doc, patches, highlightSelector);
   }, [doc, patches, highlightSelector]);
+
+  // Embedded lessons are sized to their content at the width shown here, so none of it is cut off.
+  useEffect(() => (doc ? fitEmbeddedFrames(doc) : undefined), [doc]);
 
   useEffect(() => {
     if (doc && highlightSelector) {
