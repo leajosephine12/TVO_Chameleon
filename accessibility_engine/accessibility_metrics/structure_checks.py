@@ -42,9 +42,15 @@ def structure_checks(html: str, url: str | None = None) -> dict:
     findings: list[dict] = []
     body = soup.body or soup
 
+    seen_pairs: set[tuple[str, str]] = set()
+
     def add(metric_id, tag, measured, detail):
+        block_id = ids.get(tag, "page") if tag is not None else "page"
+        if (metric_id, block_id) in seen_pairs:  # e.g. a button holding several SVGs
+            return
+        seen_pairs.add((metric_id, block_id))
         if sum(1 for f in findings if f["metric_id"] == metric_id) < MAX_PER_METRIC:
-            findings.append(finding(metric_id, ids.get(tag, "page") if tag is not None else "page", measured, detail))
+            findings.append(finding(metric_id, block_id, measured, detail))
 
     page_text = _text(body)
     words = len(page_text.split())

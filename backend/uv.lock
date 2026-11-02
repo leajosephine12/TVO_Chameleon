@@ -22,8 +22,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "playwright", marker = "extra == 'rendered'", specifier = ">=1.40" },
     { name = "textstat", specifier = ">=0.7" },
 ]
+provides-extras = ["rendered"]
 
 [[package]]
 name = "aiofile"
