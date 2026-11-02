@@ -1,136 +1,115 @@
-"""Chameleon backend (placeholder).
+"""Chameleon backend: the one HTTP service the frontend talks to.
 
-Owns the agent loop: calls the model, executes requested tools against the
-local MCP server (Interface 2), feeds results back, loops until done.
+Wraps the dyslexia_backend as a library (their readme: "The engine is plain
+Python, so it can be called directly too"), so there is no second server.
 
-Model is Claude API for now. The loop shape (messages + tools + tool_results)
-is the same one an OpenAI-compatible local model (Ollama/vLLM) uses, so
-swapping later means replacing the `claude.messages.create` call, not the loop.
+POST /analyze {html}                  -> rule-engine recs + model text recs, all status "pending"
+POST /adapted {html, recommendations} -> applies only accepted/edited ones, returns adapted HTML
 
-Config: ANTHROPIC_API_KEY (env/ant profile), MODEL_NAME, MCP_URL.
+Model = anything OpenAI-format via dyslexia_backend's own client. For Claude:
+    MODEL_BASE_URL=https://api.anthropic.com/v1
+    MODEL_NAME=claude-sonnet-5-5
+    MODEL_API_KEY=<ANTHROPIC_API_KEY>
+Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_backend/.env.example.
 
 Run: uv run uvicorn main:app --port 8001
 """
+import sys
+from pathlib import Path
 
-import json
-import os
-from typing import Literal
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dyslexia_backend"))
 
-import anthropic
-from fastapi import FastAPI, HTTPException
-from fastmcp import Client
+from bs4 import BeautifulSoup
+from fastapi import FastAPI
 from pydantic import BaseModel
 
-MCP_URL = os.environ.get("MCP_URL", "http://localhost:8000/mcp")
-MODEL_NAME = os.environ.get("MODEL_NAME", "claude-opus-5-5")
+from app import adaptation_engine as engine
+from app.adaptation_engine import ELEMENT_TYPES, _index_blocks
+from app.guidelines import PAGE_RULES
+from app.model.adapted_ui import generate_adapted_ui
+from app.model.client import ModelCallError
+from app.model.config import ModelConfigError, load_env_file
+from app.model.runner import ModelOutputError
+from app.model.standin_analyze_text import standin_analyze_text
+from app.model.text_recs import generate_text_recommendations
+from app.schemas import Recommendation
 
-SYSTEM = """You analyze web pages for dyslexia accessibility.
+load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_backend" / ".env")
 
-Use the available tools to fetch the page and gather findings, then produce
-recommendations. Respond with ONLY a JSON array of recommendation objects in
-exactly this shape, no prose, no markdown fences:
-
-[
-  {
-    "id": "r1",
-    "block_id": "p-4",
-    "type": "long_sentence",
-    "original": "...",
-    "suggestion": "...",
-    "rationale": "34 words; Grade 3-5 target <= 15-20",
-    "evidence": "readability tool / W3C COGA",
-    "severity": "medium",
-    "status": "pending"
-  }
-]
-"""
+ENGINE_TYPES = ELEMENT_TYPES | set(PAGE_RULES)
+PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
 app = FastAPI(title="chameleon-backend")
-claude = anthropic.AsyncAnthropic()
 
-# ponytail: in-memory store, lost on restart. Move to a DB when persistence matters.
-decisions: dict[str, dict] = {}
+
+def _text_blocks(html: str) -> list[dict]:
+    """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
+    index = _index_blocks(BeautifulSoup(html, "html.parser"))
+    return [
+        {"block_id": bid, "text": tag.get_text()}
+        for bid, tag in index.items()
+        if tag.name in PROSE_TAGS and tag.get_text().strip()
+    ]
 
 
 class AnalyzeRequest(BaseModel):
-    url: str
+    html: str
 
 
-class DecisionRequest(BaseModel):
-    decision: Literal["accept", "deny", "edit"]
-    edited_text: str | None = None
+class AdaptRequest(BaseModel):
+    html: str
+    recommendations: list[Recommendation]
 
 
 @app.post("/analyze")
-async def analyze(req: AnalyzeRequest):
-    async with Client(MCP_URL) as mcp:
-        tools = [
-            {
-                "name": t.name,
-                "description": t.description or "",
-                "input_schema": t.inputSchema,
-            }
-            for t in await mcp.list_tools()
-        ]
-        messages = [
-            {"role": "user", "content": f"Analyze this page for dyslexia accessibility: {req.url}"}
-        ]
-        while True:
-            response = await claude.messages.create(
-                model=MODEL_NAME,
-                max_tokens=16000,
-                system=SYSTEM,
-                tools=tools,
-                messages=messages,
+def analyze(req: AnalyzeRequest):
+    recs = engine.analyze_level1(req.html)
+    model_error = None
+    blocks = _text_blocks(req.html)
+    if blocks:
+        try:
+            recs += generate_text_recommendations(
+                blocks, standin_analyze_text(blocks), start_id=len(recs) + 1
             )
-            if response.stop_reason == "refusal":
-                detail = response.stop_details.explanation if response.stop_details else "model refused"
-                raise HTTPException(status_code=502, detail=f"Model refused: {detail}")
-            if response.stop_reason != "tool_use":
-                break
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                try:
-                    result = await mcp.call_tool(block.name, block.input)
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(result.data),
-                        }
-                    )
-                except Exception as e:
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": str(e),
-                            "is_error": True,
-                        }
-                    )
-            messages.append({"role": "user", "content": tool_results})
-
-    text = next((b.text for b in response.content if b.type == "text"), "").strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-    try:
-        recommendations = json.loads(text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail=f"Model did not return JSON: {text[:500]}")
-    return {"url": req.url, "recommendations": recommendations}
+        except (ModelConfigError, ModelCallError, ModelOutputError) as e:
+            model_error = str(e)  # engine recs still ship; the UI can show the model was unavailable
+    return {"level": 1, "recommendations": recs, "model_error": model_error}
 
 
-@app.post("/recommendations/{rec_id}/decision")
-async def decide(rec_id: str, req: DecisionRequest):
-    decisions[rec_id] = req.model_dump()
-    return {"id": rec_id, **decisions[rec_id]}
+@app.post("/adapted")
+def adapted(req: AdaptRequest):
+    engine_recs = [r for r in req.recommendations if r.type in ENGINE_TYPES]
+    model_recs = [r for r in req.recommendations if r.type not in ENGINE_TYPES]
+    result = engine.apply_level1(req.html, engine_recs)
 
+    skipped = list(result.skipped)
+    if any(r.status in ("accepted", "edited") for r in model_recs):
+        soup = BeautifulSoup(result.adapted_html, "html.parser")
+        index = _index_blocks(soup)
+        blocks = [{"block_id": b, "text": t.get_text()} for b, t in index.items()]
+        spec = generate_adapted_ui(model_recs, [], blocks)
+        skipped += [s.id for s in spec.skipped]
+        for change in spec.spec.changes:
+            tag = index.get(change.block_id)
+            if tag is None:
+                continue
+            if change.action == "replace_text":
+                # ponytail: replaces the block's text wholesale, dropping inline tags
+                # inside it. Fine for prose paragraphs; revisit if blocks carry links.
+                tag.clear()
+                tag.append(change.value)
+            elif change.action == "set_style":
+                old = tag.get("style", "").rstrip("; ")
+                tag["style"] = f"{old}; {change.value}" if old else change.value
+        result.adapted_html = str(soup)
+        result.applied = result.applied + [
+            r.id for r in model_recs if r.status in ("accepted", "edited") and r.id not in skipped
+        ]
 
-@app.get("/adapted")
-async def adapted(url: str):
-    # ponytail: placeholder. Real version applies accepted changes to the page
-    # (model call #3, generate_adapted_ui) once that pipeline exists.
-    return {"url": url, "decisions": decisions, "html": None}
+    return {
+        "adapted_html": result.adapted_html,
+        "injected_css": result.injected_css,
+        "applied": result.applied,
+        "skipped": skipped,
+        "contrast_ratio": result.contrast_ratio,
+    }
