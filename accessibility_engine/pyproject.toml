@@ -1,0 +1,16 @@
+[project]
+name = "accessibility-engine"
+version = "0.1.0"
+description = "General accessibility metrics (docs/metrics-map.md, browserless half). Import name: accessibility_metrics"
+requires-python = ">=3.10"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "textstat>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["accessibility_metrics"]

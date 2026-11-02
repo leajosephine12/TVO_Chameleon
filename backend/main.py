@@ -16,6 +16,7 @@ Run: uv run uvicorn main:app --port 8001
 """
 from pathlib import Path
 
+from accessibility_metrics import analyze_text, structure_checks
 from bs4 import BeautifulSoup
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -27,7 +28,6 @@ from app.model.adapted_ui import generate_adapted_ui
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
 from app.model.runner import ModelOutputError
-from app.model.standin_analyze_text import standin_analyze_text
 from app.model.text_recs import generate_text_recommendations
 from app.schemas import Recommendation
 
@@ -43,7 +43,7 @@ def _text_blocks(html: str) -> list[dict]:
     """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
     index = _index_blocks(BeautifulSoup(html, "html.parser"))
     return [
-        {"block_id": bid, "text": tag.get_text()}
+        {"block_id": bid, "text": tag.get_text(), "kind": tag.name}
         for bid, tag in index.items()
         if tag.name in PROSE_TAGS and tag.get_text().strip()
     ]
@@ -51,6 +51,7 @@ def _text_blocks(html: str) -> list[dict]:
 
 class AnalyzeRequest(BaseModel):
     html: str
+    url: str | None = None  # only used by URL-dependent metrics (N2 breadcrumb depth)
 
 
 class AdaptRequest(BaseModel):
@@ -63,14 +64,15 @@ def analyze(req: AnalyzeRequest):
     recs = engine.analyze_level1(req.html)
     model_error = None
     blocks = _text_blocks(req.html)
-    if blocks:
+    findings = analyze_text(blocks)["findings"] + structure_checks(req.html, url=req.url)["findings"]
+    if blocks and findings:
         try:
             recs += generate_text_recommendations(
-                blocks, standin_analyze_text(blocks), start_id=len(recs) + 1
+                blocks, {"findings": findings}, start_id=len(recs) + 1
             )
         except (ModelConfigError, ModelCallError, ModelOutputError) as e:
             model_error = str(e)  # engine recs still ship; the UI can show the model was unavailable
-    return {"level": 1, "recommendations": recs, "model_error": model_error}
+    return {"level": 1, "recommendations": recs, "model_error": model_error, "findings": findings}
 
 
 @app.post("/adapted")
