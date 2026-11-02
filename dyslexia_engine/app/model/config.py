@@ -35,6 +35,7 @@ class ModelConfig:
     timeout: float = DEFAULT_TIMEOUT
     max_retries: int = DEFAULT_MAX_RETRIES
     reasoning_effort: str | None = None
+    temperature: float | None = 0.0  # None = don't send it (some models, e.g. Claude Fable, reject it)
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
@@ -52,6 +53,11 @@ class ModelConfig:
         effort = os.environ.get("MODEL_REASONING_EFFORT", "").strip().lower() or None
         if effort is not None and effort not in _REASONING_EFFORTS:
             raise ModelConfigError(f"MODEL_REASONING_EFFORT must be one of {sorted(_REASONING_EFFORTS)}.")
+        raw_temp = os.environ.get("MODEL_TEMPERATURE", "0").strip().lower()
+        try:
+            temperature = None if raw_temp in ("none", "") else float(raw_temp)
+        except ValueError:
+            raise ModelConfigError("MODEL_TEMPERATURE must be a number, or 'none' to not send one.") from None
         return cls(
             mock=mock,
             base_url=os.environ.get("MODEL_BASE_URL", DEFAULT_BASE_URL).strip().rstrip("/"),
@@ -60,6 +66,7 @@ class ModelConfig:
             timeout=timeout,
             max_retries=max_retries,
             reasoning_effort=effort,
+            temperature=temperature,
         )
 
     def require_real(self) -> None:
