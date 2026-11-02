@@ -14,3 +14,6 @@ dependencies = [
 [tool.uv.sources]
 dyslexia-engine = { path = "../dyslexia_engine", editable = true }
 accessibility-engine = { path = "../accessibility_engine", editable = true }
+
+[dependency-groups]
+dev = ["pytest", "playwright"]
