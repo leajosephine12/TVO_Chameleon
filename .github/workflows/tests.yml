@@ -17,9 +17,7 @@ jobs:
 
       - name: Install backend + engines
         working-directory: backend
-        run: |
-          uv sync
-          uv pip install pytest
+        run: uv sync
 
       - name: Run all test suites (mock model, no key needed)
         working-directory: backend
