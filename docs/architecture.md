@@ -1,8 +1,9 @@
 # Architecture (current)
 
-One HTTP backend; `dyslexia_engine` is a library inside it, not a second service.
-The model never calls tools — the backend makes fixed, validated calls and does the
-deterministic work in plain Python.
+One HTTP backend; `dyslexia_engine` and `accessibility_engine` are libraries inside
+it, not separate services. Code measures (findings with citations), the model judges
+(fixed, validated calls — plus registered bucket-4 judgements it raises itself),
+the human decides, code applies.
 
 ```mermaid
 flowchart TD
@@ -12,34 +13,48 @@ flowchart TD
     end
 
     subgraph BE["backend/ (FastAPI, :8001 — the only server)"]
-        AN["POST /analyze {html}"]
+        AN["POST /analyze {html, url?, render?}"]
         AD["POST /adapted {html, recommendations}"]
     end
 
-    subgraph LIB["dyslexia_engine/ (imported as a library)"]
-        ENG["app/adaptation_engine.py<br/>rule engine: analyze_level1, apply_level1"]
-        GL["app/guidelines.py<br/>research values (source of truth)"]
+    subgraph ACC["accessibility_engine/ (metrics library)"]
+        TM["analyze_text<br/>T1-T7, S1 (textstat)"]
+        SC["structure_checks<br/>S/J/N/M table (DOM only)"]
+        RD["rendered.py<br/>Playwright: layout metrics, axe, screenshot"]
+        TH["THRESHOLDS + judgement registry<br/>tiers & sources from metrics.pdf"]
+    end
+
+    subgraph LIB["dyslexia_engine/ (rules + model layer)"]
+        ENG["adaptation_engine.py<br/>analyze_level1, apply_level1"]
+        GL["guidelines.py<br/>research values (source of truth)"]
         subgraph ML["app/model/ (Vriti)"]
-            SA["standin_analyze_text<br/>readability findings, plain code"]
-            C1["call 1: generate_text_recommendations"]
-            C2["call 2: generate_layout_recommendations<br/>(not wired — needs a screenshot)"]
+            C1["call 1: text recommendations<br/>+ bucket-4 judgement checks"]
+            C2["call 2: layout recommendations (vision)<br/>+ bucket-4 judgement checks"]
             C3["call 3: generate_adapted_ui<br/>plain-code apply spec"]
             CL["client.py — OpenAI-format POST"]
         end
     end
 
-    MODEL["Model endpoint (env vars only)<br/>Claude API · Ollama/Gemma 4 · MODEL_MOCK=1"]
+    MODEL["Model endpoint (env vars only)<br/>Claude Fable API · Ollama/Gemma · MODEL_MOCK=1"]
 
     CAP --> UI
     UI -->|html| AN
     UI -->|html + final statuses| AD
     AN --> ENG
-    AN --> SA --> C1
+    AN --> TM
+    AN --> SC
+    AN -->|"render=true"| RD
+    TM -->|findings| C1
+    SC -->|findings| C1
+    RD -->|"screenshot + DOM metrics"| C2
     AD --> ENG
     AD --> C3
     ENG --> GL
+    TM --- TH
+    SC --- TH
+    RD --- TH
     C1 --> CL
-    C2 -.-> CL
+    C2 --> CL
     CL -->|"POST /chat/completions"| MODEL
 
     MCP["app/main.py — FastMCP server (Pongpang)<br/>get_guidelines · analyze_html · apply_recommendations"]
@@ -48,11 +63,14 @@ flowchart TD
 
 ## Flow
 
-1. Capture tool extracts the TVO page/iframe HTML.
-2. `POST /analyze {html}` → rule-engine recommendations (`analyze_level1`) plus
-   model text recommendations (`standin_analyze_text` → call 1). All `pending`.
-3. The UI shows them; the user accepts / denies / edits. **State lives in the
-   frontend** — the backend is stateless.
+1. Capture tool extracts the TVO page/iframe HTML (or `render: true` lets the
+   backend render a URL itself: layout metrics, axe run, screenshot).
+2. `POST /analyze` → rule-engine recommendations (`analyze_level1`), plus
+   `accessibility_engine` findings fed to model call 1 (and call 2 when rendered).
+   The model also raises registered bucket-4 judgements, labeled
+   `model judgement / <metric_id>`; a guard rejects unregistered ids. All `pending`.
+3. The UI shows them with citations; the user accepts / denies / edits. **State
+   lives in the frontend** — the backend is stateless.
 4. `POST /adapted {html, recommendations}` → engine types via `apply_level1`,
    model text types via `generate_adapted_ui`. Returns adapted HTML + injected CSS.
    Send the same HTML as in step 2 — block ids (`p-4`) resolve against it.
@@ -60,9 +78,11 @@ flowchart TD
 ## Contracts
 
 - `Recommendation` (`app/schemas.py`) is the one shared object: frontend,
-  engine, and model layer all speak it.
+  engines, and model layer all speak it.
+- Findings: `{metric_id, block_id, measured, threshold, source, tier, detail}` —
+  thresholds/sources copied from `accessibility_metrics.THRESHOLDS`, never inlined.
 - Model choice is environment only (`MODEL_BASE_URL`, `MODEL_NAME`,
-  `MODEL_API_KEY`, or `MODEL_MOCK=1`) — see the root README.
+  `MODEL_API_KEY`, `MODEL_TEMPERATURE`, or `MODEL_MOCK=1`) — see the root README.
 
 ## Known gaps
 
