@@ -1,6 +1,6 @@
 """Save example inputs and outputs to samples/ for the demo fallback.
 
-Run from dyslexia_backend/:   python scripts/save_samples.py
+Run from dyslexia_engine/:   python scripts/save_samples.py
 Uses the mock (MODEL_MOCK is forced on), so it needs no model. The saved outputs are what the
 mock returns for the FAKE sample findings.
 """

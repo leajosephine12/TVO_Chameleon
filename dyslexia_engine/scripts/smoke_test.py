@@ -1,6 +1,6 @@
 """Smoke test: send one tiny request to the configured model and print the reply and how long it took.
 
-Run from the dyslexia_backend folder:
+Run from the dyslexia_engine folder:
     python scripts/smoke_test.py             # one tiny request
     python scripts/smoke_test.py --full      # also run call 1 on the two TVO sample paragraphs (validation + retries)
     python scripts/smoke_test.py --vision    # also run call 2 with a tiny test image (needs a vision-capable model)
@@ -59,7 +59,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--full", action="store_true", help="also run call 1 (text recommendations)")
     parser.add_argument("--vision", action="store_true", help="also run call 2 (layout, sends a tiny image)")
-    parser.add_argument("--env-file", default=str(ROOT / ".env"), help="optional .env file (default: dyslexia_backend/.env)")
+    parser.add_argument("--env-file", default=str(ROOT / ".env"), help="optional .env file (default: dyslexia_engine/.env)")
     args = parser.parse_args(argv)
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

@@ -10,7 +10,7 @@ from app.model.client import ModelCallError, call_model
 from app.model.config import ModelConfig, ModelConfigError
 from app.model.schemas import Recommendation, RecommendationList
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]  # dyslexia_backend/
+BACKEND_DIR = Path(__file__).resolve().parents[2]  # dyslexia_engine/
 MSGS = [{"role": "user", "content": "hi"}]
 
 

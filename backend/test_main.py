@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
-HTML = (Path(__file__).parents[1] / "dyslexia_backend/demo/sample_iframe.html").read_text()
+HTML = (Path(__file__).parents[1] / "dyslexia_engine/demo/sample_iframe.html").read_text()
 
 
 def test_analyze_then_adapt():

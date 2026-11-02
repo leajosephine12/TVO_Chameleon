@@ -11,7 +11,7 @@ Backend  --calls-->  generate_text_recommendations / generate_layout_recommendat
                                             --real-->  POST {MODEL_BASE_URL}/chat/completions   (Ollama, RunPod, any OpenAI-style server)
 ```
 
-Everything lives in `dyslexia_backend/app/model/`. It imports the team's `Recommendation` from `app/schemas.py` and does not
+Everything lives in `dyslexia_engine/app/model/`. It imports the team's `Recommendation` from `app/schemas.py` and does not
 change any teammate file. **Importing it does not need `fastmcp`** (a test checks this).
 
 ## What each file does
@@ -31,7 +31,7 @@ change any teammate file. **Importing it does not need `fastmcp`** (a test check
 | `sample_data.py` | The two real TVO paragraphs and clearly-fake findings, used by tests and demos |
 | `log.py` | `enable_timing_logs()` |
 
-Outside this folder I added only: `dyslexia_backend/tests/`, `pytest.ini`, `requirements-model.txt`, `scripts/`, `samples/`, `.env.example`.
+Outside this folder I added only: `dyslexia_engine/tests/`, `pytest.ini`, `requirements-model.txt`, `scripts/`, `samples/`, `.env.example`.
 
 ---
 
@@ -42,7 +42,7 @@ You need Python 3.10 or newer (this was built on 3.13). Check with `python --ver
 **1. Open PowerShell and go to the backend folder.** Adjust the path to where you cloned the repo:
 
 ```powershell
-cd C:\Users\<you>\Desktop\Projects_UofT\TVO_Chameleon\dyslexia_backend
+cd C:\Users\<you>\Desktop\Projects_UofT\TVO_Chameleon\dyslexia_engine
 ```
 
 **2. Make a virtual environment** (a private folder of Python packages for this project, so nothing else on your computer is affected):
@@ -285,7 +285,7 @@ result.skipped   # accepted recommendations that could not become a change, each
 
 ## Samples (demo fallback)
 
-`dyslexia_backend/samples/` holds saved inputs and outputs for all three calls, made with the **mock** from the **fake** findings (see `samples/README.md`). The UI can show them when no model is running. Regenerate with `python scripts/save_samples.py`.
+`dyslexia_engine/samples/` holds saved inputs and outputs for all three calls, made with the **mock** from the **fake** findings (see `samples/README.md`). The UI can show them when no model is running. Regenerate with `python scripts/save_samples.py`.
 
 ---
 

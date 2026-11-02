@@ -1,6 +1,6 @@
 # Architecture (current)
 
-One HTTP backend; `dyslexia_backend` is a library inside it, not a second service.
+One HTTP backend; `dyslexia_engine` is a library inside it, not a second service.
 The model never calls tools — the backend makes fixed, validated calls and does the
 deterministic work in plain Python.
 
@@ -16,7 +16,7 @@ flowchart TD
         AD["POST /adapted {html, recommendations}"]
     end
 
-    subgraph LIB["dyslexia_backend/ (imported as a library)"]
+    subgraph LIB["dyslexia_engine/ (imported as a library)"]
         ENG["app/adaptation_engine.py<br/>rule engine: analyze_level1, apply_level1"]
         GL["app/guidelines.py<br/>research values (source of truth)"]
         subgraph ML["app/model/ (Vriti)"]

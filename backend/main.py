@@ -1,23 +1,20 @@
 """Chameleon backend: the one HTTP service the frontend talks to.
 
-Wraps the dyslexia_backend as a library (their readme: "The engine is plain
+Wraps the dyslexia_engine as a library (their readme: "The engine is plain
 Python, so it can be called directly too"), so there is no second server.
 
 POST /analyze {html}                  -> rule-engine recs + model text recs, all status "pending"
 POST /adapted {html, recommendations} -> applies only accepted/edited ones, returns adapted HTML
 
-Model = anything OpenAI-format via dyslexia_backend's own client. For Claude:
+Model = anything OpenAI-format via dyslexia_engine's own client. For Claude:
     MODEL_BASE_URL=https://api.anthropic.com/v1
     MODEL_NAME=claude-sonnet-5-5
     MODEL_API_KEY=<ANTHROPIC_API_KEY>
-Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_backend/.env.example.
+Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_engine/.env.example.
 
 Run: uv run uvicorn main:app --port 8001
 """
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dyslexia_backend"))
 
 from bs4 import BeautifulSoup
 from fastapi import FastAPI
@@ -34,7 +31,7 @@ from app.model.standin_analyze_text import standin_analyze_text
 from app.model.text_recs import generate_text_recommendations
 from app.schemas import Recommendation
 
-load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_backend" / ".env")
+load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
 
 ENGINE_TYPES = ELEMENT_TYPES | set(PAGE_RULES)
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
