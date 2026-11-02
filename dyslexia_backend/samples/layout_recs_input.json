@@ -1,0 +1,20 @@
+{
+  "screenshot": "(omitted: a tiny placeholder image is used)",
+  "metrics": {
+    "FAKE_SAMPLE_DATA": true,
+    "blocks": [
+      {
+        "block_id": "p-1",
+        "font_size_px": 14,
+        "line_height": 1.2,
+        "line_length_chars": 96
+      },
+      {
+        "block_id": "p-2",
+        "font_size_px": 14,
+        "line_height": 1.2,
+        "line_length_chars": 96
+      }
+    ]
+  }
+}
