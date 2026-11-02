@@ -14,11 +14,13 @@ Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_engine/.env.example.
 
 Run: uv run uvicorn main:app --port 8001
 """
+import os
 from pathlib import Path
 
 from accessibility_metrics import analyze_text, structure_checks
+from accessibility_metrics.judgement import TEXT_JUDGEMENT, VISION_JUDGEMENT
 from bs4 import BeautifulSoup
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app import adaptation_engine as engine
@@ -27,6 +29,7 @@ from app.guidelines import PAGE_RULES
 from app.model.adapted_ui import generate_adapted_ui
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
+from app.model.layout_recs import generate_layout_recommendations
 from app.model.runner import ModelOutputError
 from app.model.text_recs import generate_text_recommendations
 from app.schemas import Recommendation
@@ -49,9 +52,15 @@ def _text_blocks(html: str) -> list[dict]:
     ]
 
 
+# Reviewer attention is the budget now, not model speed (the 4 was tuned for local Gemma).
+MAX_RECS = int(os.environ.get("MAX_RECOMMENDATIONS", "8"))
+MODEL_ERRORS = (ModelConfigError, ModelCallError, ModelOutputError)
+
+
 class AnalyzeRequest(BaseModel):
-    html: str
-    url: str | None = None  # only used by URL-dependent metrics (N2 breadcrumb depth)
+    html: str = ""  # optional when render=true (the rendered page's HTML is used)
+    url: str | None = None  # used by URL-dependent metrics (N2) and required for render
+    render: bool = False  # render with Playwright: layout metrics + axe + screenshot + model call 2
 
 
 class AdaptRequest(BaseModel):
@@ -61,18 +70,43 @@ class AdaptRequest(BaseModel):
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
-    recs = engine.analyze_level1(req.html)
-    model_error = None
-    blocks = _text_blocks(req.html)
-    findings = analyze_text(blocks)["findings"] + structure_checks(req.html, url=req.url)["findings"]
-    if blocks and findings:
+    rendered = None
+    if req.render:
+        if not req.url:
+            raise HTTPException(status_code=422, detail="render=true needs a url")
+        from accessibility_metrics.rendered import rendered_checks  # optional Playwright dependency
+
+        rendered = rendered_checks(req.url)
+    html = req.html or (rendered["html"] if rendered else "")
+    if not html:
+        raise HTTPException(status_code=422, detail="send html, or render=true with a url")
+
+    recs = engine.analyze_level1(html)
+    model_errors = []
+    blocks = _text_blocks(html)
+    findings = analyze_text(blocks)["findings"] + structure_checks(html, url=req.url)["findings"]
+    if rendered:
+        findings += rendered["findings"]
+
+    if blocks:
         try:
             recs += generate_text_recommendations(
-                blocks, {"findings": findings}, start_id=len(recs) + 1
+                blocks, {"findings": findings}, start_id=len(recs) + 1,
+                max_recommendations=MAX_RECS, judgement_checks=TEXT_JUDGEMENT,
             )
-        except (ModelConfigError, ModelCallError, ModelOutputError) as e:
-            model_error = str(e)  # engine recs still ship; the UI can show the model was unavailable
-    return {"level": 1, "recommendations": recs, "model_error": model_error, "findings": findings}
+        except MODEL_ERRORS as e:
+            model_errors.append(str(e))  # engine recs still ship; the UI can show the model was unavailable
+    if rendered:
+        try:
+            recs += generate_layout_recommendations(
+                rendered["screenshot"], {"blocks": rendered["metrics"]["blocks"]},
+                start_id=len(recs) + 1, max_recommendations=MAX_RECS, judgement_checks=VISION_JUDGEMENT,
+            )
+        except MODEL_ERRORS as e:
+            model_errors.append(str(e))
+
+    return {"level": 1, "recommendations": recs,
+            "model_error": "; ".join(model_errors) or None, "findings": findings}
 
 
 @app.post("/adapted")

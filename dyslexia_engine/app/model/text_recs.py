@@ -8,13 +8,14 @@ from functools import partial
 from .client import call_model
 from .config import ModelConfig
 from .guards import (
+    check_judgement_evidence,
     check_known_blocks,
     check_meaning_preserved,
     check_original_is_quoted,
     check_rationale_numbers,
     check_status_pending,
 )
-from .prompts import build_messages
+from .prompts import build_messages, judgement_section
 from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
@@ -62,8 +63,13 @@ def generate_text_recommendations(
     config: ModelConfig | None = None,
     transport=None,
     caller=call_model,
+    judgement_checks: dict[str, str] | None = None,
 ) -> list[Recommendation]:
-    """Return text recommendations (ids r{start_id}, r{start_id+1}, ...), or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data."""
+    """Return text recommendations (ids r{start_id}, r{start_id+1}, ...), or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data.
+
+    judgement_checks: optional bucket-4 metrics (id -> instruction) the model may judge itself,
+    labeled evidence "model judgement / <id>". Unknown ids are rejected by the guard.
+    """
     _validate_input(blocks)
     config = config or ModelConfig.from_env()
     block_text = {b["block_id"]: b["text"] for b in blocks}
@@ -78,8 +84,11 @@ def generate_text_recommendations(
             partial(check_rationale_numbers, findings=findings),
             check_meaning_preserved,
         ]
+        if judgement_checks:
+            checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    messages = build_messages(INSTRUCTIONS, RecommendationList, {"blocks": blocks, "findings": findings})
+    instructions = INSTRUCTIONS + (judgement_section(judgement_checks) if judgement_checks else "")
+    messages = build_messages(instructions, RecommendationList, {"blocks": blocks, "findings": findings})
     recs = run_recommendation_task(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,

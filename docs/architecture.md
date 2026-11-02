@@ -66,7 +66,9 @@ flowchart TD
 
 ## Known gaps
 
-- Call 2 (layout, vision) is unwired until the capture tool passes a screenshot.
+- Rendered metrics deferred: L7 style variance, L8 density, L9/L10 fold checks,
+  and the paragraph-spacing half of L2.
+- Bucket 2 (spaCy/embeddings) and bucket 3 (multi-page crawl) of the metrics map.
 - Applying a model text edit replaces the block's text wholesale (drops inline
   tags inside the block).
 - Levels beyond 1 are not implemented.

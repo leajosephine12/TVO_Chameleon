@@ -75,3 +75,34 @@ def test_clean_page_is_quiet():
     assert structure_checks(clean)["findings"] == []
     blocks = [{"block_id": "p-1", "text": "We grow beans. The beans grow fast.", "kind": "p"}]
     assert analyze_text(blocks)["findings"] == []
+
+
+def test_layout_findings_pure():
+    from accessibility_metrics.rendered import layout_findings
+    m = {
+        "blocks": [
+            {"block_id": "p-1", "kind": "p", "font_size_px": 14.0, "line_height": 1.2,
+             "line_length_chars": 95, "text_align": "justify"},
+            {"block_id": "p-2", "kind": "p", "font_size_px": 18.0, "line_height": 1.6,
+             "line_length_chars": 60, "text_align": "left"},
+            {"block_id": "h2-1", "kind": "h2", "font_size_px": 14.0, "line_height": 1.1,
+             "line_length_chars": 90, "text_align": "left"},  # headings: no prose checks
+        ],
+        "font_families": ["georgia", "verdana", "courier"],
+        "scroll_width_320": 480,
+        "axe_violations": [
+            {"id": "color-contrast", "impact": "serious", "selector": "p-1", "description": "low contrast"},
+            {"id": "target-size", "impact": "moderate", "selector": "a-3", "description": "small target"},
+        ],
+    }
+    found = layout_findings(m)
+    by_metric = {}
+    for f in found:
+        by_metric.setdefault(f["metric_id"], []).append(f)
+    assert {f["block_id"] for f in by_metric["L1"]} == {"p-1"}      # p-2 in range, h2 skipped
+    assert {f["block_id"] for f in by_metric["L2"]} == {"p-1"}
+    assert {f["block_id"] for f in by_metric["L3"]} == {"p-1"}
+    assert by_metric["L6"][0]["measured"]["scroll_width_320"] == 480
+    assert by_metric["L12"][0]["measured"]["font_families"] == ["georgia", "verdana", "courier"]
+    assert by_metric["L4"][0]["measured"]["rule_id"] == "target-size"
+    assert by_metric["AXE"][0]["measured"]["rule_id"] == "color-contrast"
