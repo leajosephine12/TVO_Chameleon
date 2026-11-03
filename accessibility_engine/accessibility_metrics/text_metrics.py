@@ -70,18 +70,20 @@ def analyze_text(blocks: list[dict]) -> dict:
         for s in sentences:
             n = len(_WORD.findall(s))
             if n > THRESHOLDS["T3"]["max_words"]:
-                findings.append(finding("T3", bid, {"word_count": n, "sentence": s[:120]},
+                # whole sentence, never truncated: the model quotes it as `original`,
+                # and a quoted prefix would make the rewrite leave the tail behind
+                findings.append(finding("T3", bid, {"word_count": n, "sentence": s},
                                         f"Sentence has {n} words."))
 
         # T4 conjunctions per sentence
         for s in sentences:
             n = sum(1 for w in _WORD.findall(s) if w.lower() in _CONJUNCTIONS)
             if n > THRESHOLDS["T4"]["max_conjunctions"]:
-                findings.append(finding("T4", bid, {"conjunctions": n, "sentence": s[:120]},
+                findings.append(finding("T4", bid, {"conjunctions": n, "sentence": s},
                                         f"Sentence chains {n} conjunctions."))
 
         # T6 passive voice (report-only)
-        passives = [s[:120] for s in sentences if _PASSIVE.search(s)]
+        passives = [s for s in sentences if _PASSIVE.search(s)]
         if passives:
             findings.append(finding("T6", bid, {"passive_sentences": len(passives), "examples": passives[:3]},
                                     f"{len(passives)} sentence(s) in passive voice."))
