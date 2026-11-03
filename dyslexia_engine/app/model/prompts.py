@@ -39,3 +39,19 @@ def attach_image(messages: list[dict], data_url: str) -> list[dict]:
     *rest, last = messages
     content = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": data_url}}]
     return [*rest, {**last, "content": content}]
+
+
+def judgement_section(checks: dict[str, str]) -> str:
+    """Prompt block for bucket-4 judgement metrics (docs/metrics-map.md): the one exception
+    to 'only report problems from the findings' — the model judges these itself, labeled."""
+    lines = "\n".join(f"- {mid}: {text}" for mid, text in checks.items())
+    return f"""
+
+Judgement checks (the one exception to reporting only findings — you judge these yourself):
+{lines}
+For each judgement check that clearly applies, add a recommendation with:
+- type: the metric id (for example "{next(iter(checks))}")
+- evidence: exactly "model judgement / <metric id>"
+- original: the affected text, copied exactly from the block (or the CSS/description for visual checks)
+- rationale: one short sentence; no numbers unless they appear in the findings.
+Raise one only when you are confident; when in doubt, skip it silently."""

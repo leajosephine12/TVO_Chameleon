@@ -1,0 +1,19 @@
+[project]
+name = "chameleon-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "beautifulsoup4",
+    "pydantic",
+    "dyslexia-engine",
+    "accessibility-engine",
+]
+
+[tool.uv.sources]
+dyslexia-engine = { path = "../dyslexia_engine", editable = true }
+accessibility-engine = { path = "../accessibility_engine", editable = true }
+
+[dependency-groups]
+dev = ["pytest", "playwright"]

@@ -138,3 +138,19 @@ def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
             lost = ", ".join(missing_nums + missing_names)
             problems.append(f"{r.id}: suggestion lost facts from the original ({lost}). Keep every fact, number and name.")
     return problems
+
+
+_JUDGEMENT_EVIDENCE = re.compile(r"^model judgement / ([A-Z]+\d+)\s*$")
+
+
+def check_judgement_evidence(recs: list[Recommendation], judgement_ids: set[str]) -> list[str]:
+    """A judgement recommendation (evidence 'model judgement / <id>') must cite a registered bucket-4 metric id."""
+    problems = []
+    for r in recs:
+        m = _JUDGEMENT_EVIDENCE.match(r.evidence.strip())
+        if m and m.group(1) not in judgement_ids:
+            problems.append(
+                f"{r.id}: evidence cites unknown judgement metric '{m.group(1)}'. "
+                f"Use one of: {', '.join(sorted(judgement_ids))}, or ground the recommendation in a finding."
+            )
+    return problems
