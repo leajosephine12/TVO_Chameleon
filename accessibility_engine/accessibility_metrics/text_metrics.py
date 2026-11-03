@@ -17,7 +17,7 @@ PROSE_KINDS = {"p", "blockquote"}
 MIN_WORDS_FOR_FORMULAS = 20  # readability formulas are noise on tiny blocks
 
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(])")
-_WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'-]*")  # digits count as words ("40 minutes" = 2)
 _CONJUNCTIONS = {
     "and", "but", "or", "nor", "yet", "so", "because", "although", "though",
     "while", "since", "unless", "whereas", "if", "when", "after", "before", "until",

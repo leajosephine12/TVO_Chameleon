@@ -40,7 +40,6 @@ Field guide:
 Only write recommendations for problems that appear in the findings. If there are no problems, return {"recommendations": []}.
 
 Keep the reply short, because a long reply is slow:
-- At most 4 recommendations: every long sentence first, then the hardest words if there is room.
 - 'rationale' is at most 15 words.
 - Write compact JSON: no indentation and no blank lines."""
 
@@ -87,7 +86,11 @@ def generate_text_recommendations(
         if judgement_checks:
             checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    instructions = INSTRUCTIONS + (judgement_section(judgement_checks) if judgement_checks else "")
+    instructions = INSTRUCTIONS
+    if max_recommendations:  # the cap travels with the call, so the prompt and cap_by_severity agree
+        instructions += f"\n- At most {max_recommendations} recommendations: every long sentence first, then the hardest words if there is room."
+    if judgement_checks:
+        instructions += judgement_section(judgement_checks)
     messages = build_messages(instructions, RecommendationList, {"blocks": blocks, "findings": findings})
     recs = run_recommendation_task(
         task=TASK, messages=messages, checks=tuple(checks),

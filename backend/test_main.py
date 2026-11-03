@@ -32,3 +32,20 @@ def test_analyze_then_adapt():
     assert out["applied"]
     assert out["injected_css"]
     assert out["adapted_html"] != HTML
+
+
+def test_adapted_applies_model_layout_rec():
+    """An accepted call-2 layout rec must land as inline CSS — even when its type
+    collides with an engine type name (recs are split by evidence, not type)."""
+    rec = {
+        "id": "r9", "block_id": "p-1", "type": "typography",
+        "original": "", "suggestion": "line-height: 1.8",
+        "rationale": "Line spacing below 1.5.", "evidence": "model judgement / L5",
+        "severity": "medium", "status": "accepted",
+    }
+    r = client.post("/adapted", json={"html": HTML, "recommendations": [rec]})
+    assert r.status_code == 200
+    out = r.json()
+    assert "r9" in out["applied"]
+    assert "r9" not in out["skipped"]
+    assert "line-height: 1.8" in out["adapted_html"]

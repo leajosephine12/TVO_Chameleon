@@ -15,6 +15,7 @@ Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_engine/.env.example.
 Run: uv run uvicorn main:app --port 8001
 """
 import os
+import re
 from pathlib import Path
 
 from accessibility_metrics import analyze_text, structure_checks
@@ -24,9 +25,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app import adaptation_engine as engine
-from app.adaptation_engine import ELEMENT_TYPES, _index_blocks
-from app.guidelines import PAGE_RULES
+from app.adaptation_engine import _index_blocks
 from app.model.adapted_ui import generate_adapted_ui
+from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
 from app.model.layout_recs import generate_layout_recommendations
@@ -36,7 +37,6 @@ from app.schemas import Recommendation
 
 load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
 
-ENGINE_TYPES = ELEMENT_TYPES | set(PAGE_RULES)
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
 app = FastAPI(title="chameleon-backend")
@@ -109,10 +109,24 @@ def analyze(req: AnalyzeRequest):
             "model_error": "; ".join(model_errors) or None, "findings": findings}
 
 
+_ENGINE_EVIDENCE = re.compile(r"^Level \d+ guideline")
+
+
+def _is_css(r: Recommendation) -> bool:
+    try:
+        parse_css(r.suggestion)
+        return True
+    except ValueError:
+        return False
+
+
 @app.post("/adapted")
 def adapted(req: AdaptRequest):
-    engine_recs = [r for r in req.recommendations if r.type in ENGINE_TYPES]
-    model_recs = [r for r in req.recommendations if r.type not in ENGINE_TYPES]
+    # Split by evidence, not type: a model rec may reuse an engine type name
+    # (Gemma emitted "typography"), which must not trigger the engine's whole stylesheet.
+    # Engine recs cite "Level <n> guideline(s) ..." — any level, so level 2 routes here too.
+    engine_recs = [r for r in req.recommendations if _ENGINE_EVIDENCE.match(r.evidence)]
+    model_recs = [r for r in req.recommendations if not _ENGINE_EVIDENCE.match(r.evidence)]
     result = engine.apply_level1(req.html, engine_recs)
 
     skipped = list(result.skipped)
@@ -120,7 +134,12 @@ def adapted(req: AdaptRequest):
         soup = BeautifulSoup(result.adapted_html, "html.parser")
         index = _index_blocks(soup)
         blocks = [{"block_id": b, "text": t.get_text()} for b, t in index.items()]
-        spec = generate_adapted_ui(model_recs, [], blocks)
+        # CSS suggestions are layout recs (call 2); everything else is a text rewrite (call 1)
+        spec = generate_adapted_ui(
+            [r for r in model_recs if not _is_css(r)],
+            [r for r in model_recs if _is_css(r)],
+            blocks,
+        )
         skipped += [s.id for s in spec.skipped]
         for change in spec.spec.changes:
             tag = index.get(change.block_id)
