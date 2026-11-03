@@ -1,6 +1,7 @@
 """Call 3, model version. Optional: plain code (adapted_ui.py) is the recommended implementation.
 
-The model is given the accepted recommendations and the block texts and must return the placeholder spec.
+The model is given the accepted recommendations and the block texts and must return the spec, using only
+replace_text and set_style (the recommendations carry no input for the structural actions).
 Its output is accepted only if it passes checks that make it equivalent in substance to the plain-code result:
 every accepted suggestion appears word for word, replaced originals are gone, numbers survive, and styles match.
 """
@@ -22,7 +23,7 @@ You build the adapted version of a web page from the changes a user accepted.
 You get the text blocks that have accepted text recommendations, the accepted text recommendations, and the accepted layout (CSS) recommendations.
 Return a JSON object {"changes": [...]}. Each change has:
 - block_id: the block it applies to ("page" is allowed for set_style only)
-- action: "replace_text" or "set_style"
+- action: "replace_text" or "set_style" (do not use any other action)
 - value: see the rules"""
 
 
@@ -50,6 +51,8 @@ def _check_spec(
             elif c.block_id in replaced:
                 problems.append(f"More than one replace_text for '{c.block_id}'. Merge them into one.")
             replaced[c.block_id] = c.value
+        elif c.action != "set_style":
+            problems.append(f"'{c.action}' for '{c.block_id}' was not asked for. Use only replace_text and set_style.")
         else:
             if c.block_id not in style_blocks:
                 problems.append(f"set_style for '{c.block_id}', which has no accepted layout recommendation.")

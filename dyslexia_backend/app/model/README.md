@@ -26,7 +26,7 @@ change any teammate file. **Importing it does not need `fastmcp`** (a test check
 | `prompts.py` | Rules shared by every prompt |
 | `text_recs.py` | Call 1: `generate_text_recommendations(blocks, findings)` |
 | `layout_recs.py` | Call 2: `generate_layout_recommendations(screenshot, metrics)` (needs a vision model) |
-| `adapted_ui.py`, `adapted_ui_model.py`, `adapted_ui_spec.py` | Call 3: `generate_adapted_ui(...)`, plain code by default, model version optional, placeholder spec |
+| `adapted_ui.py`, `adapted_ui_model.py`, `adapted_ui_spec.py` | Call 3: `generate_adapted_ui(...)`, plain code by default, model version optional, GenUI spec |
 | `standin_analyze_text.py` | A **stand-in** for the team's `analyze_text`, plain code |
 | `sample_data.py` | The two real TVO paragraphs and clearly-fake findings, used by tests and demos |
 | `log.py` | `enable_timing_logs()` |
@@ -265,21 +265,39 @@ recs = generate_text_recommendations(blocks, findings)
 
 It is flagged `"STAND_IN": true` in its output. Replace it with the team's real `analyze_text` when that exists. Its readability grade is Flesch-Kincaid and its syllable, sentence and difficult-word detection are rough heuristics.
 
-## Call 3: `generate_adapted_ui` (placeholder GenUI spec)
+## Call 3: `generate_adapted_ui` (GenUI spec)
 
-> **The spec is a placeholder** (`adapted_ui_spec.py`): `{"changes": [{"block_id", "action": "replace_text|set_style", "value"}]}`. Swap the real schema in that file and in the two builders.
+The spec lives in `adapted_ui_spec.py`: `{"changes": [...]}`. Every change has a `block_id` and an `action`, and the `action` decides which other fields are allowed (a Pydantic discriminated union, so the JSON schema shows one shape per action).
 
 ```python
 result = generate_adapted_ui(text_recs, layout_recs, blocks)                 # plain code (recommended, default)
 result = generate_adapted_ui(text_recs, layout_recs, blocks, use_model=True) # model version
-result.spec      # the placeholder spec
+result.spec      # AdaptedUISpec
 result.skipped   # accepted recommendations that could not become a change, each with a reason
 ```
 
+**Supported actions** (a closed list; anything else fails validation):
+
+| action | fields | renderer does |
+|---|---|---|
+| `replace_text` | `value` | replaces the block's text, inserted as text (never HTML). Not for `page`. |
+| `set_style` | `value` | applies CSS declarations; only the safe properties in `ALLOWED_CSS_PROPERTIES`, no `url(`, `expression`, `var(` ... `page` is allowed. |
+| `text_to_list` | `list_type` (`bulleted`/`numbered`), `items` (2-20), `expected_original`? | shows the block's content as a `ul`/`ol` of the items. |
+| `split_into_steps` | `steps` (2-20), `intro`?, `expected_original`? | shows the block's content as numbered steps, with the optional intro line first. |
+| `add_button_label` | `label` (1-40 chars, one line), `placement` (`after_icon`/`below_icon`), `expected_original`? | adds a visible text label to an icon button; the icon, the button and its action stay the same. |
+| `group_menu_items` | `groups` (2+, each `label` and `item_ids`) | adds group headings inside the menu `block_id`. |
+
+- All text (`items`, `steps`, `intro`, `label`) is trimmed, must be non-empty, and must be plain text. Anything that looks like an HTML tag is rejected. The renderer must still insert it as text (`textContent`), never as `innerHTML`.
+- Structural actions need a real `block_id`, not `page`, and reject unknown keys. `replace_text` and `set_style` keep the original JSON shape and ignore extra keys, exactly as before.
+- **`expected_original`** (optional) is a precondition: the block's text as the backend saw it. If the live text differs (ignoring whitespace), the renderer **skips** the change instead of applying it to stale content.
+- **`group_menu_items` never moves or drops items.** All the groups' `item_ids` read in order must equal the menu's current item ids in document order. Otherwise the renderer skips the change. Each item may appear only once.
+- The renderer should skip, and report, any change whose `block_id` (or item id) it cannot find. One bad change makes the whole spec invalid at validation time, so a spec that parses contains only well-formed changes.
+
+**Deliberately not supported:** raw HTML, arbitrary DOM operations (setting attributes, event handlers, `innerHTML`, inserting or creating arbitrary elements), deleting or hiding elements, moving or reordering elements, and scripts or external resources (CSS `url(...)`). Changes to links or button behaviour are also out. If a new need comes up, add a new named action with its own validated fields rather than a generic one.
+
 - Only `accepted` / `edited` recommendations are used; pending and denied are ignored. For `edited`, `suggestion` holds the user's own text.
-- `blocks` is needed because `replace_text` carries the whole new block text (one block can have several accepted edits). Question for the GenUI owner: would a phrase-level change (original + replacement) suit the renderer better?
-- `set_style` values are checked against a safe list of CSS properties; `replace_text` must be plain text. The renderer must insert it as text, never as HTML.
-- Structural suggestions such as "break into steps" are reported in `skipped`, because the placeholder spec cannot express them.
+- `blocks` is needed because `replace_text` carries the whole new block text (one block can have several accepted edits).
+- The builders still produce only `replace_text` and `set_style`. Recommendations carry no items or steps, so structural suggestions such as "break into steps" are still reported in `skipped`, and the model version is told (and checked) not to emit structural actions. The structural actions are ready for whoever produces them next (for example a call that turns a `break_into_steps` recommendation into `split_into_steps`).
 
 **Recommendation: use the plain-code version.** Once the user has accepted a change, turning it into a spec is deterministic. Code gives the same answer every time, cannot reword what the user approved, needs no model call (no wait on a laptop, no cost), and is easy to test. The model version needs checks that force its output to equal the code's result, so it adds risk and delay and no value. A model would only help if the spec needed judgement, for example turning "break into steps" into real UI structure, and that depends on the real GenUI schema. Revisit then.
 
@@ -295,7 +313,7 @@ result.skipped   # accepted recommendations that could not become a change, each
 1. **The `analyze_text` findings shape** is my proposal. Nothing like it exists on the branch (the teammates' `analyze_html` is a rule-based dyslexia-CSS layer with no readability data).
 2. **The `layout_metrics` shape** is my proposal; the tool does not exist yet.
 3. **`standin_analyze_text`** is a stand-in with rough heuristics (sentence splitting on `. ! ?` before a capital; syllables estimated from vowel groups; "difficult" = 3+ syllables minus a small easy-word list; sentences over 20 words reported). Treat its numbers as approximate.
-4. **The GenUI spec** is the placeholder from the brief, isolated in `adapted_ui_spec.py`.
+4. **The GenUI spec** started as the brief's placeholder and now has a small closed list of structural actions (see Call 3). It is isolated in `adapted_ui_spec.py`.
 5. **The fake findings and fake layout metrics** in `sample_data.py` and the samples are made up (flagged `FAKE_SAMPLE_DATA`). The mock's numbers (24 words, line height 1.2) are fake too.
 
 **Design choices**

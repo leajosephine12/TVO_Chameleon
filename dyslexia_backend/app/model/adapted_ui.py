@@ -1,4 +1,4 @@
-"""Call 3: generate_adapted_ui. Turns accepted recommendations into the adapted-page spec (placeholder schema).
+"""Call 3: generate_adapted_ui. Turns accepted recommendations into the adapted-page spec (adapted_ui_spec.py).
 
 Two implementations, same input and output:
 - plain code (default): deterministic, never alters the accepted wording. RECOMMENDED.
@@ -9,7 +9,7 @@ Pending and denied ones are ignored, so it is safe to pass every recommendation.
 """
 import re
 
-from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, Change, SkippedRecommendation, format_css, parse_css
+from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetStyle, SkippedRecommendation, format_css, parse_css
 from .schemas import Recommendation
 
 APPROVED = ("accepted", "edited")
@@ -45,7 +45,7 @@ def select_usable(
         except ValueError as e:
             skipped.append(SkippedRecommendation(
                 id=r.id,
-                reason=f"{e} Structural changes (for example breaking text into steps) cannot be expressed in the placeholder spec."))
+                reason=f"{e} Structural changes (for example breaking text into steps) are not generated from recommendations yet."))
     return text_ok, layout_ok, skipped
 
 
@@ -68,8 +68,8 @@ def _generate_plain(
     for r, declarations in layout_ok:
         styles.setdefault(r.block_id, {}).update(declarations)  # later recommendations win per property
 
-    changes = [Change(block_id=b, action="replace_text", value=t) for b, t in new_text.items()]
-    changes += [Change(block_id=b, action="set_style", value=format_css(d)) for b, d in styles.items()]
+    changes = [ReplaceText(block_id=b, value=t) for b, t in new_text.items()]
+    changes += [SetStyle(block_id=b, value=format_css(d)) for b, d in styles.items()]
     return AdaptedUIResult(spec=AdaptedUISpec(changes=changes), skipped=skipped)
 
 

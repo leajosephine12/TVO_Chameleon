@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.model.adapted_ui import generate_adapted_ui
-from app.model.adapted_ui_spec import AdaptedUISpec, Change, parse_css
+from app.model.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
 from app.model.mock import mock_response
 from app.model.sample_data import SAMPLE_BLOCKS
 from app.model.schemas import Recommendation
@@ -122,9 +122,9 @@ def test_unsafe_or_malformed_css_is_rejected(css):
 
 def test_html_in_replace_text_is_rejected():
     with pytest.raises(ValidationError):
-        Change(block_id="p-1", action="replace_text", value="Hi <script>alert(1)</script>")
+        ReplaceText(block_id="p-1", value="Hi <script>alert(1)</script>")
     with pytest.raises(ValidationError):
-        Change(block_id="page", action="replace_text", value="text")
+        ReplaceText(block_id="page", value="text")
     with pytest.raises(ValidationError):
         AdaptedUISpec.model_validate({"changes": [{"block_id": "p-1", "action": "delete", "value": "x"}]})
 
