@@ -30,6 +30,17 @@ Open http://localhost:3000, paste a TVO Learn link and press "Capture page". A c
 For client development, run `npm start` in the repository root and `npm run dev` in `client/`
 (http://localhost:5173 forwards `/api` and `/snapshots` to the server). See `client/README.md`.
 
+### What the review shows
+
+When a captured page is chosen, the client sends the captured lesson (`frames/f0.html`, or the page itself
+when it has no lesson frame) to `POST /analyze` and lists what comes back in the **Dyslexia version**.
+Page-wide rules (font, spacing, colour, layout, emphasis) are previewed with the CSS that `POST /adapted`
+produces for them. Recommendations that cannot be shown on the page are left out, such as icon-font tags
+reported as italics, or text from `MODEL_MOCK=1` that is not in the page. The mock model returns the same
+fixed suggestions for every page. To use a real model, copy `dyslexia_engine/.env.example` to
+`dyslexia_engine/.env`, remove `MODEL_MOCK=1` and set `MODEL_BASE_URL`, `MODEL_NAME` and `MODEL_API_KEY`.
+If the backend is not running, the page still opens and the version note says the analysis could not be run.
+
 ## Backend
 
 The one HTTP service the frontend talks to (Interface 3: UI <-> Backend). It wraps
