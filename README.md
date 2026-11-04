@@ -6,6 +6,18 @@ Group 4 repo for FTL 2026
 The capture server (`server.js`) pulls a TVO Learn page into a static copy, and the client (`client/`)
 shows that copy next to the review panel.
 
+Two processes run side by side. Start the analysis backend first (see "Backend" below for the model settings):
+
+```
+cd backend
+uv sync
+uv run python -m nltk.downloader cmudict    # first run only: the readability metrics need this word list
+MODEL_MOCK=1 uv run uvicorn main:app --port 8001
+```
+
+Then, from the repository root, start the capture server, which also serves the client and forwards
+`/backend/analyze` and `/backend/adapted` to the backend (set `BACKEND_URL` if it is not on port 8001):
+
 ```
 npm install
 npx playwright install chromium
@@ -13,7 +25,7 @@ npm run build:client
 npm start
 ```
 
-Then open http://localhost:3000, paste a TVO Learn link and press "Capture page". A capture can take a few minutes.
+Open http://localhost:3000, paste a TVO Learn link and press "Capture page". A capture can take a few minutes.
 
 For client development, run `npm start` in the repository root and `npm run dev` in `client/`
 (http://localhost:5173 forwards `/api` and `/snapshots` to the server). See `client/README.md`.

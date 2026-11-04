@@ -4,9 +4,11 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { capture, validateUrl, ALLOWED_HOSTS } from './capture.js';
+import { createBackendProxy } from './backendProxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8001';
 const ROOT = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'snapshots'));
 await fs.mkdir(ROOT, { recursive: true });
 
@@ -24,6 +26,9 @@ if (process.env.APP_PASSWORD) {
         res.set('WWW-Authenticate', 'Basic realm="TVO capture"').status(401).send('Password required');
     });
 }
+
+// Before express.json(), whose default size limit is too small for a captured page.
+app.use('/backend', createBackendProxy(BACKEND_URL));
 
 app.use(express.json());
 
