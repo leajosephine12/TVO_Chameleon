@@ -1,5 +1,6 @@
 import type { CaptureGateway } from '../application/ports';
 import type { PageCapture } from '../domain/capture';
+import { requestJson } from './requestJson';
 
 /** The parts of the capture server's meta.json that the client uses. */
 interface CaptureMeta {
@@ -7,15 +8,6 @@ interface CaptureMeta {
   sourceUrl: string;
   title: string;
   capturedAt: string;
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const body = (await response.json().catch(() => null)) as { error?: string } | null;
-  if (!response.ok || body === null) {
-    throw new Error(body?.error ?? 'The capture server did not respond. Is it running?');
-  }
-  return body as T;
 }
 
 function toCapture(meta: CaptureMeta): PageCapture {
