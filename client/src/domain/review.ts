@@ -9,7 +9,11 @@ export type WcagCheck = 'pass' | 'fail' | 'review';
 export type Patch =
   | { kind: 'css'; css: string }
   | { kind: 'insert'; selector: string; position: 'before' | 'after' | 'prepend' | 'append'; html: string }
-  | { kind: 'replaceText'; selector: string; find: string; text: string };
+  | { kind: 'replaceText'; selector: string; find: string; text: string }
+  /** Swaps the element for the given HTML. Empty HTML removes the element and keeps what was inside it, if any. */
+  | { kind: 'replaceElement'; selector: string; html: string }
+  /** Sets the element's inline style. An empty style removes it. */
+  | { kind: 'setStyle'; selector: string; style: string };
 
 export interface Suggestion {
   id: string;
