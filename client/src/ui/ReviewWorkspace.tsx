@@ -74,6 +74,7 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
           url={page.url}
           addressLabel={`${page.label} · ${version.shortName} version`}
           patches={patches}
+          targetFrame={session.targetFrame}
           highlightSelector={isVisitor ? null : (selected?.targetSelector ?? null)}
           controls={
             isVisitor ? (

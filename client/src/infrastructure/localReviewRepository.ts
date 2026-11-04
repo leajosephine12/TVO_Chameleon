@@ -21,6 +21,7 @@ export function createLocalReviewRepository(
 ): ReviewRepository {
   return {
     loadSession: async (page) => ({
+      targetFrame: null,
       versions:
         page.url === samplePage.url
           ? sampleVersions

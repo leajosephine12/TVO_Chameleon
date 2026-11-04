@@ -54,6 +54,8 @@ export interface ReviewedPage {
 export type Decisions = Record<string, ReviewStatus>;
 
 export interface ReviewSession {
+  /** The `src` of the frame inside the page that the suggestions apply to, or null when they apply to the page itself. */
+  targetFrame: string | null;
   versions: ReviewVersion[];
   decisions: Decisions;
 }

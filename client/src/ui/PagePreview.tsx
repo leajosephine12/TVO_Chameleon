@@ -7,13 +7,15 @@ interface Props {
   url: string;
   addressLabel: string;
   patches: Patch[];
+  /** The `src` of the frame the patches apply to, or null to apply them to the page itself. */
+  targetFrame: string | null;
   highlightSelector: string | null;
   /** Controls shown at the right of the address bar. */
   controls: ReactNode;
 }
 
 /** The reviewed page in a browser-style frame. Scripts stay off inside it, like in a captured page. */
-export function PagePreview({ url, addressLabel, patches, highlightSelector, controls }: Props) {
+export function PagePreview({ url, addressLabel, patches, targetFrame, highlightSelector, controls }: Props) {
   const [doc, setDoc] = useState<Document | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const previewRef = useRef<HTMLElement>(null);
@@ -33,18 +35,36 @@ export function PagePreview({ url, addressLabel, patches, highlightSelector, con
     }
   };
 
+  // The document the suggestions apply to: the page, or a lesson frame inside it.
+  const [targetDoc, setTargetDoc] = useState<Document | null>(null);
   useEffect(() => {
-    if (doc) applyPatches(doc, patches, highlightSelector);
-  }, [doc, patches, highlightSelector]);
+    if (!doc || !targetFrame) {
+      setTargetDoc(doc);
+      return;
+    }
+    const frame = doc.querySelector<HTMLIFrameElement>(`iframe[src="${targetFrame}"]`);
+    if (!frame) {
+      setTargetDoc(null);
+      return;
+    }
+    const useFrameDocument = () => setTargetDoc(frame.contentDocument);
+    useFrameDocument();
+    frame.addEventListener('load', useFrameDocument); // the frame may still be loading
+    return () => frame.removeEventListener('load', useFrameDocument);
+  }, [doc, targetFrame]);
+
+  useEffect(() => {
+    if (targetDoc) applyPatches(targetDoc, patches, highlightSelector);
+  }, [targetDoc, patches, highlightSelector]);
 
   // Embedded lessons are sized to their content at the width shown here, so none of it is cut off.
   useEffect(() => (doc ? fitEmbeddedFrames(doc) : undefined), [doc]);
 
   useEffect(() => {
-    if (doc && highlightSelector) {
-      doc.querySelector(highlightSelector)?.scrollIntoView({ block: 'center' });
+    if (targetDoc && highlightSelector) {
+      targetDoc.querySelector(highlightSelector)?.scrollIntoView({ block: 'center' });
     }
-  }, [doc, highlightSelector]);
+  }, [targetDoc, highlightSelector]);
 
   return (
     <section ref={previewRef} className="preview" aria-label="Page preview">
