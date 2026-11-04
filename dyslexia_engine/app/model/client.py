@@ -33,7 +33,9 @@ def call_model(
 
     config.require_real()
     headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-    payload = {"model": config.model_name, "messages": messages, "temperature": 0}
+    payload = {"model": config.model_name, "messages": messages}
+    if config.temperature is not None:
+        payload["temperature"] = config.temperature
     if config.reasoning_effort:
         payload["reasoning_effort"] = config.reasoning_effort
     try:

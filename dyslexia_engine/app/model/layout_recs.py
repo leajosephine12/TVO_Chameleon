@@ -15,8 +15,8 @@ from ..guidelines import BODY_FONT_PX, HEADING_SCALE, LEVEL1_GUIDELINES, LINE_HE
 from .client import call_model
 from .config import ModelConfig
 from .adapted_ui_spec import parse_css
-from .guards import check_known_blocks, check_rationale_numbers, check_status_pending
-from .prompts import attach_image, build_messages
+from .guards import check_judgement_evidence, check_known_blocks, check_rationale_numbers, check_status_pending
+from .prompts import attach_image, build_messages, judgement_section
 from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
 
@@ -179,8 +179,13 @@ def generate_layout_recommendations(
     config: ModelConfig | None = None,
     transport=None,
     caller=call_model,
+    judgement_checks: dict[str, str] | None = None,
 ) -> list[Recommendation]:
-    """Return layout recommendations, or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data."""
+    """Return layout recommendations, or raise ModelOutputError / ModelCallError / ModelConfigError. Never invalid data.
+
+    judgement_checks: optional bucket-4 vision metrics (id -> instruction) the model may judge from
+    the screenshot, labeled evidence "model judgement / <id>". Unknown ids are rejected by the guard.
+    """
     _validate_metrics(metrics)
     data_url = screenshot_to_data_url(screenshot)
     config = config or ModelConfig.from_env()
@@ -190,8 +195,11 @@ def generate_layout_recommendations(
     if not config.mock:  # the mock ignores its input, so input-matching checks only apply to a real model
         block_ids = {b["block_id"] for b in metrics["blocks"]} | {"page"}
         checks += [partial(check_known_blocks, block_ids=block_ids), partial(check_rationale_numbers, findings=findings), check_css_suggestions]
+        if judgement_checks:
+            checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    messages = attach_image(build_messages(INSTRUCTIONS, RecommendationList, findings), data_url)
+    instructions = INSTRUCTIONS + (judgement_section(judgement_checks) if judgement_checks else "")
+    messages = attach_image(build_messages(instructions, RecommendationList, findings), data_url)
     recs = run_recommendation_task(
         task=TASK, messages=messages, checks=tuple(checks),
         max_retries=max_retries, config=config, transport=transport, caller=caller,
