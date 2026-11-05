@@ -12,6 +12,16 @@ describe('indexBlocks', () => {
     expect(blocks['h1-1'].selector).toBe('[data-cid="c"]');
   });
 
+  it('describes a block by its text, its text nodes and its style', () => {
+    const blocks = indexBlocks(
+      '<body><p data-cid="a" style="color: red">Buy <a href="#">now</a>\n today</p></body>',
+    );
+
+    expect(blocks['p-1'].text).toBe('Buy now today');
+    expect(blocks['p-1'].textNodes).toEqual(['Buy ', 'now', ' today']);
+    expect(blocks['p-1'].style).toBe('color: red');
+  });
+
   it('counts what is inside a <template> but does not offer it, since the page never shows it', () => {
     const blocks = indexBlocks(
       '<body><template><p data-cid="hidden">Not shown</p></template><p data-cid="shown">Shown</p></body>',
