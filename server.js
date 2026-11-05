@@ -4,9 +4,11 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { capture, validateUrl, ALLOWED_HOSTS } from './capture.js';
+import { createBackendProxy } from './backendProxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8001';
 const ROOT = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'snapshots'));
 await fs.mkdir(ROOT, { recursive: true });
 
@@ -24,6 +26,9 @@ if (process.env.APP_PASSWORD) {
         res.set('WWW-Authenticate', 'Basic realm="TVO capture"').status(401).send('Password required');
     });
 }
+
+// Before express.json(), whose default size limit is too small for a captured page.
+app.use('/backend', createBackendProxy(BACKEND_URL));
 
 app.use(express.json());
 
@@ -84,10 +89,17 @@ app.get('/api/snapshots', async (req, res) => {
 
 app.get('/api/config', (req, res) => res.json({ allowedHosts: ALLOWED_HOSTS }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+// The review client (client/, built with `npm run build:client`). It is served from the same
+// origin as the captured pages, which is what lets it apply changes inside them.
+const CLIENT_DIST = path.join(__dirname, 'client', 'dist');
+app.use(express.static(CLIENT_DIST));
 
-app.listen(PORT, () => {
-    console.log('TVO capture running at http://localhost:' + PORT);
+// Only this computer can reach the server unless a password protects it or HOST says otherwise. The
+// /backend routes can run model calls, which cost money when a paid API key is set.
+const HOST = process.env.HOST || (process.env.APP_PASSWORD ? '0.0.0.0' : '127.0.0.1');
+
+app.listen(PORT, HOST, () => {
+    console.log(`TVO capture running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
     console.log('Allowed hosts: ' + ALLOWED_HOSTS.join(', '));
     if (!process.env.APP_PASSWORD) console.log('No APP_PASSWORD set: anyone who can reach this port can use it.');
 });

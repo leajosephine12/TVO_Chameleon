@@ -122,6 +122,17 @@
   }
   window.addEventListener('resize', fit);
 
+  function embedSummary(meta) {
+    var e = meta.embeds || [];
+    if (!e.length) return 'none';
+    var n = function (r) { return e.filter(function (x) { return x.result === r; }).length; };
+    var parts = [];
+    if (n('copied')) parts.push(n('copied') + ' copied');
+    if (n('picture')) parts.push(n('picture') + ' as picture');
+    if (n('empty') + n('failed')) parts.push((n('empty') + n('failed')) + ' not copied');
+    return parts.join(', ');
+  }
+
   function show(meta) {
     current = meta;
     var base = '/snapshots/' + meta.id + '/';
@@ -142,7 +153,8 @@
       ['Assets saved', meta.assets],
       ['Images', s.images - s.imagesMissing + ' of ' + s.images],
       ['Stylesheets', s.stylesheets],
-      ['Scripts removed', s.removed.scripts]
+      ['Scripts removed', s.removed.scripts],
+      ['Embedded frames', embedSummary(meta)]
     ];
     var dl = $('stats');
     dl.innerHTML = '';
