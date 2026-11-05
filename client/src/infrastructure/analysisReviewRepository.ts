@@ -1,6 +1,6 @@
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
 import type { ReviewedPage, ReviewVersion, Suggestion } from '../domain/review';
-import { indexBlocks } from './pageBlocks';
+import { indexBlocks, normalizeHtml } from './pageBlocks';
 import { isPageWide, suggestionsFromRecommendations } from './recommendationSuggestions';
 
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
@@ -41,8 +41,8 @@ export function createAnalysisReviewRepository(
   async function analysePage(page: ReviewedPage) {
     const pageHtml = await fetchText(page.url);
     const targetFrame = findLessonFrame(pageHtml);
-    // The same HTML must go to the backend and to indexBlocks, or block ids point at the wrong elements.
-    const html = targetFrame ? await fetchText(folderOf(page.url) + targetFrame) : pageHtml;
+    // Both the backend and indexBlocks count tags in this exact string, so their block ids always agree.
+    const html = normalizeHtml(targetFrame ? await fetchText(folderOf(page.url) + targetFrame) : pageHtml);
 
     const { recommendations, modelError } = await analysis.analyze(html);
 
