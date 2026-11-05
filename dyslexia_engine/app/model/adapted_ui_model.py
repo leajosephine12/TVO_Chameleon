@@ -6,8 +6,11 @@ Its output is accepted only if it passes checks that make it equivalent in subst
 every accepted suggestion appears word for word, replaced originals are gone, numbers survive, and styles match.
 """
 from functools import partial
+from typing import Annotated, Union
 
-from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, parse_css
+from pydantic import BaseModel, Field
+
+from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetStyle, parse_css
 from .adapted_ui import select_usable
 from .client import call_model
 from .config import ModelConfig
@@ -17,6 +20,14 @@ from .runner import run_task
 from .schemas import Recommendation
 
 TASK = "adapted_ui"
+
+# Call 3 is explicitly limited to these actions. Do not spend prompt tokens on the
+# structural-action schemas that the model is forbidden to return.
+Call3Change = Annotated[Union[ReplaceText, SetStyle], Field(discriminator="action")]
+
+
+class Call3Spec(BaseModel):
+    changes: list[Call3Change] = Field(max_length=100)
 
 INSTRUCTIONS = """\
 You build the adapted version of a web page from the changes a user accepted.
@@ -117,8 +128,9 @@ def generate_adapted_ui_with_model(
     }
     # The mock returns a fixed reply that ignores its input, so only the schema check applies to it.
     checks = () if config.mock else (partial(_check_spec, text_recs=text_ok, layout_recs=layout_ok, block_text=block_text),)
-    spec = run_task(
-        task=TASK, messages=build_messages(INSTRUCTIONS, AdaptedUISpec, data, rules=ADAPT_RULES),
-        schema=AdaptedUISpec, checks=checks, max_retries=max_retries, config=config, transport=transport, caller=caller,
+    call3_spec = run_task(
+        task=TASK, messages=build_messages(INSTRUCTIONS, Call3Spec, data, rules=ADAPT_RULES),
+        schema=Call3Spec, checks=checks, max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
+    spec = AdaptedUISpec.model_validate(call3_spec.model_dump())
     return AdaptedUIResult(spec=spec, skipped=skipped)

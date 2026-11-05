@@ -147,6 +147,11 @@ def test_meaning_check_catches_lost_number_and_name():
     assert guards.check_meaning_preserved([rec(original="Go to Manitoulin Island.", suggestion="Go to the island.")])
 
 
+def test_meaning_check_does_not_treat_structural_labels_as_full_rewrites():
+    heading = rec(type="S3", original="Toronto students planted 20 trees in 2026.", suggestion="Tree planting")
+    assert guards.check_meaning_preserved([heading]) == []
+
+
 # ---- page text is data ----
 
 def test_injected_instructions_stay_inside_the_data_block():

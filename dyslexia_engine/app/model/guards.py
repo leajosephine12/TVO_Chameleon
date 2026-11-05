@@ -124,6 +124,13 @@ def _mid_sentence_capitals(text: str) -> set[str]:
     }
 
 
+def lost_facts(original: str, rewritten: str) -> list[str]:
+    """Return the numbers and proper-name proxies lost by a rewrite."""
+    missing_nums = sorted(numbers_in(original) - numbers_in(rewritten))
+    missing_names = sorted(w for w in _mid_sentence_capitals(original) if w not in rewritten)
+    return missing_nums + missing_names
+
+
 def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
     """Cheap proxy for 'same facts': digits and names in the original must survive in the suggestion.
 
@@ -132,10 +139,15 @@ def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
     """
     problems = []
     for r in recs:
-        missing_nums = sorted(numbers_in(r.original) - numbers_in(r.suggestion))
-        missing_names = sorted(w for w in _mid_sentence_capitals(r.original) if w not in r.suggestion)
-        if missing_nums or missing_names:
-            lost = ", ".join(missing_nums + missing_names)
+        # These suggestions are element labels/metadata, not rewrites of the whole
+        # original block. A short S3 heading, for example, should not have to repeat
+        # every fact in its section. The typed actions still use expected_original
+        # as a stale-content precondition when the spec is applied.
+        if r.type.upper() in {"J5", "J11", "J12", "J14", "S3"}:
+            continue
+        missing = lost_facts(r.original, r.suggestion)
+        if missing:
+            lost = ", ".join(missing)
             problems.append(f"{r.id}: suggestion lost facts from the original ({lost}). Keep every fact, number and name.")
     return problems
 

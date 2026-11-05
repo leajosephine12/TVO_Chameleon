@@ -98,6 +98,27 @@ def test_structural_suggestion_is_skipped_with_a_reason():
     assert res.spec.changes == [] and res.skipped[0].id == "r7" and "Structural" in res.skipped[0].reason
 
 
+@pytest.mark.parametrize("metric,block,original,suggestion,action", [
+    ("J5", {"block_id": "a-1", "text": "click here", "kind": "a"},
+     "click here", "Read the course guide", "set_link_text"),
+    ("J11", {"block_id": "button-1", "text": "", "kind": "button"},
+     "", "Open menu", "add_button_label"),
+    ("J12", {"block_id": "img-1", "text": "", "alt": "image", "kind": "img"},
+     "image", "Students planting beans", "set_alt_text"),
+    ("J14", {"block_id": "button-1", "text": "Submit", "kind": "button"},
+     "Submit", "Submit application", "set_button_label"),
+    ("S3", {"block_id": "section-1", "text": "Students plant beans.", "kind": "section"},
+     "Students plant beans.", "Garden activities", "add_section_heading"),
+])
+def test_structural_metrics_map_to_typed_actions(metric, block, original, suggestion, action):
+    rec = Recommendation(
+        id="r20", block_id=block["block_id"], type=metric, original=original, suggestion=suggestion,
+        rationale="Clearer control.", evidence=f"structure check / {metric}", severity="medium", status="accepted",
+    )
+    result = generate_adapted_ui([rec], [], [block])
+    assert len(result.spec.changes) == 1 and result.spec.changes[0].action == action
+
+
 # ---- the spec itself ----
 
 def test_output_is_exactly_the_placeholder_shape():

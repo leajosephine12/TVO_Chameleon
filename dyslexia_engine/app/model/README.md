@@ -27,6 +27,7 @@ change any teammate file. **Importing it does not need `fastmcp`** (a test check
 | `text_recs.py` | Call 1: `generate_text_recommendations(blocks, findings)` |
 | `layout_recs.py` | Call 2: `generate_layout_recommendations(screenshot, metrics)` (needs a vision model) |
 | `adapted_ui.py`, `adapted_ui_model.py`, `adapted_ui_spec.py` | Call 3: `generate_adapted_ui(...)`, plain code by default, model version optional, GenUI spec |
+| `adapted_renderer.py` | Resolves every target id before editing, safely applies every typed action, and reports skipped changes |
 | `standin_analyze_text.py` | A **stand-in** for the team's `analyze_text`, plain code |
 | `sample_data.py` | The two real TVO paragraphs and clearly-fake findings, used by tests and demos |
 | `log.py` | `enable_timing_logs()` |
@@ -282,22 +283,32 @@ result.skipped   # accepted recommendations that could not become a change, each
 |---|---|---|
 | `replace_text` | `value` | replaces the block's text, inserted as text (never HTML). Not for `page`. |
 | `set_style` | `value` | applies CSS declarations; only the safe properties in `ALLOWED_CSS_PROPERTIES`, no `url(`, `expression`, `var(` ... `page` is allowed. |
-| `text_to_list` | `list_type` (`bulleted`/`numbered`), `items` (2-20), `expected_original`? | shows the block's content as a `ul`/`ol` of the items. |
-| `split_into_steps` | `steps` (2-20), `intro`?, `expected_original`? | shows the block's content as numbered steps, with the optional intro line first. |
+| `text_to_list` | `list_type` (`bulleted`/`numbered`), `items` (2-20), `expected_original` | shows the block's content as a `ul`/`ol` of the items. |
+| `split_into_steps` | `steps` (2-20), `intro`?, `expected_original` | shows the block's content as numbered steps, with the optional intro line first. |
 | `add_button_label` | `label` (1-40 chars, one line), `placement` (`after_icon`/`below_icon`), `expected_original`? | adds a visible text label to an icon button; the icon, the button and its action stay the same. |
 | `group_menu_items` | `groups` (2+, each `label` and `item_ids`) | adds group headings inside the menu `block_id`. |
+| `set_link_text` | `text`, `expected_original` | replaces only an anchor's visible text; its `href` and other attributes stay unchanged. |
+| `set_button_label` | `label`, `expected_original` | replaces a button's visible label and sets the same `aria-label`; the button and its action stay unchanged. |
+| `set_alt_text` | `alt`, `expected_original` | replaces an image's `alt` attribute without changing `src` or other attributes. |
+| `add_section_heading` | `heading`, `level` (2-6), `expected_original` | inserts an `h2`-`h6` as the first child of a heading-less `section` or `article`. |
 
 - All text (`items`, `steps`, `intro`, `label`) is trimmed, must be non-empty, and must be plain text. Anything that looks like an HTML tag is rejected. The renderer must still insert it as text (`textContent`), never as `innerHTML`.
 - Structural actions need a real `block_id`, not `page`, and reject unknown keys. `replace_text` and `set_style` keep the original JSON shape and ignore extra keys, exactly as before.
-- **`expected_original`** (optional) is a precondition: the block's text as the backend saw it. If the live text differs (ignoring whitespace), the renderer **skips** the change instead of applying it to stale content.
+- **`expected_original`** is required for `text_to_list` and `split_into_steps`, because they rebuild the block. It remains optional for an icon-only button label. If the live text differs (ignoring whitespace), the renderer **skips** the change instead of applying it to stale content.
+- List/step validation also rejects a conversion that drops a number or likely proper name from `expected_original`. This is a conservative automated fact check, not a complete semantic proof; the UI still shows the original and proposed content for human approval.
 - **`group_menu_items` never moves or drops items.** All the groups' `item_ids` read in order must equal the menu's current item ids in document order. Otherwise the renderer skips the change. Each item may appear only once.
-- The renderer should skip, and report, any change whose `block_id` (or item id) it cannot find. One bad change makes the whole spec invalid at validation time, so a spec that parses contains only well-formed changes.
+- The renderer skips, and reports, any change whose `block_id` (or item id) it cannot find. One malformed change makes the whole spec invalid at validation time, so a spec that parses contains only well-formed changes.
+- The renderer resolves every id against the original DOM before applying anything. Ids such as `li-12` are document-order positions and can shift after structural changes.
+- At most one content/structural rebuild and one `set_style` may target a block. Compatible text feedback is merged into one `replace_text`; style feedback is merged into one `set_style`. Incompatible rebuilds are rejected instead of depending on application order.
+
+Fixed renderer output: `text_to_list` produces `<ul><li>...</li></ul>` or `<ol><li>...</li></ol>`; `split_into_steps` produces an optional plain-text `<p>` followed by `<ol><li>...</li></ol>`; `add_button_label` adds a text `<span>` after/below the icon and sets the button's accessible name; `group_menu_items` inserts group headings without reordering their referenced items. Because list/step strings are plain text, the renderer detects links or inline emphasis in the live block and skips that conversion, reporting the reason instead of silently dropping the markup.
 
 **Deliberately not supported:** raw HTML, arbitrary DOM operations (setting attributes, event handlers, `innerHTML`, inserting or creating arbitrary elements), deleting or hiding elements, moving or reordering elements, and scripts or external resources (CSS `url(...)`). Changes to links or button behaviour are also out. If a new need comes up, add a new named action with its own validated fields rather than a generic one.
 
 - Only `accepted` / `edited` recommendations are used; pending and denied are ignored. For `edited`, `suggestion` holds the user's own text.
 - `blocks` is needed because `replace_text` carries the whole new block text (one block can have several accepted edits).
-- The builders still produce only `replace_text` and `set_style`. Recommendations carry no items or steps, so structural suggestions such as "break into steps" are still reported in `skipped`, and the model version is told (and checked) not to emit structural actions. The structural actions are ready for whoever produces them next (for example a call that turns a `break_into_steps` recommendation into `split_into_steps`).
+- The plain builder maps accepted J5, J11, J12, J14 and S3 findings to `set_link_text`, `add_button_label`, `set_alt_text`, `set_button_label` and `add_section_heading`. Recommendations still carry no item arrays, so free-form "break into steps/list" suggestions remain skipped unless a caller supplies a typed `text_to_list` or `split_into_steps` change.
+- The optional model version of call 3 deliberately receives a trimmed schema containing only `replace_text` and `set_style`; the full `AdaptedUISpec` validation still runs on its output.
 
 **Recommendation: use the plain-code version.** Once the user has accepted a change, turning it into a spec is deterministic. Code gives the same answer every time, cannot reword what the user approved, needs no model call (no wait on a laptop, no cost), and is easy to test. The model version needs checks that force its output to equal the code's result, so it adds risk and delay and no value. A model would only help if the spec needed judgement, for example turning "break into steps" into real UI structure, and that depends on the real GenUI schema. Revisit then.
 

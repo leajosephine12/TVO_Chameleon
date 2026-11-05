@@ -9,7 +9,11 @@ Pending and denied ones are ignored, so it is safe to pass every recommendation.
 """
 import re
 
-from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetStyle, SkippedRecommendation, format_css, parse_css
+from .adapted_ui_spec import (
+    AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
+    SetAltText, SetButtonLabel, SetLinkText, SetStyle, SkippedRecommendation,
+    format_css, parse_css,
+)
 from .schemas import Recommendation
 
 APPROVED = ("accepted", "edited")
@@ -28,13 +32,15 @@ def select_usable(
 
     Returns (text recs, (layout rec, parsed css) pairs, skipped).
     """
-    block_text = {b["block_id"]: b["text"] for b in blocks or []}
+    block_data = {b["block_id"]: b for b in blocks or []}
+    block_text = {block_id: b.get("alt", "") if b.get("kind") == "img" else b.get("text", "")
+                  for block_id, b in block_data.items()}
     skipped: list[SkippedRecommendation] = []
     text_ok, layout_ok = [], []
     for r in (r for r in text_recs if r.status in APPROVED):
         if r.block_id not in block_text:
             skipped.append(SkippedRecommendation(id=r.id, reason=f"block '{r.block_id}' was not in the blocks you passed."))
-        elif _find(block_text[r.block_id], r.original) is None:
+        elif r.original and _find(block_text[r.block_id], r.original) is None:
             skipped.append(SkippedRecommendation(
                 id=r.id, reason=f"the original text was not found in block '{r.block_id}' (the page may have changed)."))
         else:
@@ -56,19 +62,50 @@ def _generate_plain(
     block_text = {b["block_id"]: b["text"] for b in blocks or []}
 
     new_text: dict[str, str] = {}
+    structural_changes = []
+    content_blocks: set[str] = set()
     for r in text_ok:
+        metric = r.type.upper()
+        special = None
+        if metric == "J5":
+            special = SetLinkText(block_id=r.block_id, text=r.suggestion, expected_original=r.original)
+        elif metric == "J12":
+            special = SetAltText(block_id=r.block_id, alt=r.suggestion, expected_original=r.original)
+        elif metric == "J14":
+            special = SetButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original)
+        elif metric == "S3":
+            special = AddSectionHeading(block_id=r.block_id, heading=r.suggestion, expected_original=r.original)
+        elif metric == "J11":
+            special = AddButtonLabel(
+                block_id=r.block_id, label=r.suggestion,
+                expected_original=r.original or None,
+            )
+        if special is not None:
+            if r.block_id in content_blocks:
+                skipped.append(SkippedRecommendation(
+                    id=r.id, reason=f"another content or structural change already targets '{r.block_id}'."))
+            else:
+                structural_changes.append(special)
+                content_blocks.add(r.block_id)
+            continue
+        if r.block_id in content_blocks and r.block_id not in new_text:
+            skipped.append(SkippedRecommendation(
+                id=r.id, reason=f"a structural change already targets '{r.block_id}'."))
+            continue
         current = new_text.get(r.block_id, block_text[r.block_id])
         match = _find(current, r.original)
         if match is None:  # an earlier accepted edit overlapped this one
             skipped.append(SkippedRecommendation(id=r.id, reason=f"another accepted edit already changed the text of '{r.original[:40]}...'."))
             continue
         new_text[r.block_id] = current[: match.start()] + r.suggestion + current[match.end() :]
+        content_blocks.add(r.block_id)
 
     styles: dict[str, dict[str, str]] = {}
     for r, declarations in layout_ok:
         styles.setdefault(r.block_id, {}).update(declarations)  # later recommendations win per property
 
     changes = [ReplaceText(block_id=b, value=t) for b, t in new_text.items()]
+    changes += structural_changes
     changes += [SetStyle(block_id=b, value=format_css(d)) for b, d in styles.items()]
     return AdaptedUIResult(spec=AdaptedUISpec(changes=changes), skipped=skipped)
 

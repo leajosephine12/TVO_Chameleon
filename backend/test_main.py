@@ -49,3 +49,27 @@ def test_adapted_applies_model_layout_rec():
     assert "r9" in out["applied"]
     assert "r9" not in out["skipped"]
     assert "line-height: 1.8" in out["adapted_html"]
+
+
+def test_adapted_applies_typed_link_action():
+    html = '<p>Choose a lesson.</p><a href="/lesson" class="cta">click here</a>'
+    rec = {
+        "id": "r10", "block_id": "a-1", "type": "J5", "original": "click here",
+        "suggestion": "Choose a lesson", "rationale": "The link needs a clear purpose.",
+        "evidence": "structure check / J5", "severity": "medium", "status": "accepted",
+    }
+    response = client.post("/adapted", json={"html": html, "recommendations": [rec]})
+    out = response.json()
+    assert response.status_code == 200 and "r10" in out["applied"] and "r10" not in out["skipped"]
+    assert 'href="/lesson"' in out["adapted_html"] and ">Choose a lesson</a>" in out["adapted_html"]
+
+
+def test_adapted_reports_renderer_rejection_as_skipped():
+    rec = {
+        "id": "r11", "block_id": "p-1", "type": "J5", "original": "Not a link",
+        "suggestion": "Read the guide", "rationale": "The link needs a clear purpose.",
+        "evidence": "structure check / J5", "severity": "medium", "status": "accepted",
+    }
+    response = client.post("/adapted", json={"html": "<p>Not a link</p>", "recommendations": [rec]})
+    out = response.json()
+    assert response.status_code == 200 and "r11" in out["skipped"] and "r11" not in out["applied"]

@@ -5,19 +5,27 @@ import pytest
 from pydantic import ValidationError
 
 from app.model.adapted_ui_spec import (
-    AddButtonLabel, AdaptedUISpec, GroupMenuItems, ReplaceText, SetStyle, SplitIntoSteps, TextToList,
+    AddButtonLabel, AddSectionHeading, AdaptedUISpec, GroupMenuItems, ReplaceText,
+    SetAltText, SetButtonLabel, SetLinkText, SetStyle, SplitIntoSteps, TextToList,
 )
 
 VALID = [
     {"block_id": "p-1", "action": "replace_text", "value": "Short, plain text."},
     {"block_id": "page", "action": "set_style", "value": "line-height: 1.6"},
-    {"block_id": "p-2", "action": "text_to_list", "list_type": "bulleted", "items": ["Apples", "Pears"]},
+    {"block_id": "p-2", "action": "text_to_list", "list_type": "bulleted", "items": ["Apples", "Pears"],
+     "expected_original": "Apples and pears."},
     {"block_id": "p-3", "action": "text_to_list", "list_type": "numbered", "items": ["One", "Two", "Three"],
      "expected_original": "One, two and three."},
-    {"block_id": "p-4", "action": "split_into_steps", "steps": ["Open the app.", "Sign in."], "intro": "To start:"},
+    {"block_id": "p-4", "action": "split_into_steps", "steps": ["Open the app.", "Sign in."], "intro": "To start:",
+     "expected_original": "Open the app, then sign in."},
     {"block_id": "button-2", "action": "add_button_label", "label": "Search", "placement": "below_icon"},
     {"block_id": "nav-1", "action": "group_menu_items", "groups": [
         {"label": "Learn", "item_ids": ["a-1", "a-2"]}, {"label": "Help", "item_ids": ["a-3"]}]},
+    {"block_id": "a-4", "action": "set_link_text", "text": "Read the course guide", "expected_original": "click here"},
+    {"block_id": "button-3", "action": "set_button_label", "label": "Submit application", "expected_original": "Submit"},
+    {"block_id": "img-2", "action": "set_alt_text", "alt": "Students planting a garden", "expected_original": "image"},
+    {"block_id": "section-2", "action": "add_section_heading", "heading": "Garden activities", "level": 2,
+     "expected_original": "Students plant beans."},
 ]
 
 
@@ -35,13 +43,16 @@ def rejected(change):
 def test_every_action_parses_to_its_own_type():
     spec = parse(*VALID)
     assert [type(c) for c in spec.changes] == [
-        ReplaceText, SetStyle, TextToList, TextToList, SplitIntoSteps, AddButtonLabel, GroupMenuItems]
+        ReplaceText, SetStyle, TextToList, TextToList, SplitIntoSteps, AddButtonLabel, GroupMenuItems,
+        SetLinkText, SetButtonLabel, SetAltText, AddSectionHeading,
+    ]
 
 
 def test_whitespace_is_trimmed_and_defaults_are_filled():
     c = parse({"block_id": "button-1", "action": "add_button_label", "label": "  Menu  "}).changes[0]
     assert c.label == "Menu" and c.placement == "after_icon" and c.expected_original is None
-    steps = parse({"block_id": "p-1", "action": "split_into_steps", "steps": [" a ", "b"]}).changes[0]
+    steps = parse({"block_id": "p-1", "action": "split_into_steps", "steps": [" a ", "b"],
+                   "expected_original": "a then b"}).changes[0]
     assert steps.steps == ["a", "b"] and steps.intro is None
 
 
@@ -65,7 +76,50 @@ def test_json_schema_is_a_discriminated_union_on_action():
     items = schema["properties"]["changes"]["items"]
     assert items["discriminator"]["propertyName"] == "action"
     assert set(items["discriminator"]["mapping"]) == {
-        "replace_text", "set_style", "text_to_list", "split_into_steps", "add_button_label", "group_menu_items"}
+        "replace_text", "set_style", "text_to_list", "split_into_steps", "add_button_label", "group_menu_items",
+        "set_link_text", "set_button_label", "set_alt_text", "add_section_heading",
+    }
+
+
+def test_safe_renderer_id_shape_is_required():
+    for unsafe in ("a.b:c", "x:hover", "5-5", "P-1", "p_1"):
+        rejected({**VALID[0], "block_id": unsafe})
+
+
+def test_rebuild_preconditions_and_collection_caps_are_required():
+    for index in (2, 4):
+        change = dict(VALID[index])
+        change.pop("expected_original")
+        rejected(change)
+    rejected({"block_id": "nav-1", "action": "group_menu_items", "groups": [
+        {"label": "A", "item_ids": [f"a-{i}" for i in range(21)]},
+        {"label": "B", "item_ids": ["a-99"]},
+    ]})
+    with pytest.raises(ValidationError):
+        AdaptedUISpec.model_validate({"changes": [VALID[0]] * 101})
+
+
+def test_block_combination_is_explicit_and_order_independent():
+    parse(VALID[0], {"block_id": "p-1", "action": "set_style", "value": "line-height: 1.6"})
+    with pytest.raises(ValidationError):
+        parse(VALID[0], {**VALID[2], "block_id": "p-1"})
+    with pytest.raises(ValidationError):
+        parse(
+            {"block_id": "p-1", "action": "set_style", "value": "line-height: 1.6"},
+            {"block_id": "p-1", "action": "set_style", "value": "font-size: 18px"},
+        )
+
+
+def test_structural_rewrites_must_preserve_numbers_and_names():
+    rejected({
+        "block_id": "p-1", "action": "text_to_list", "list_type": "bulleted",
+        "items": ["The program starts soon.", "It is in Toronto."],
+        "expected_original": "The program starts in 2026 in Toronto.",
+    })
+    rejected({
+        "block_id": "p-1", "action": "split_into_steps", "steps": ["Open the form.", "Send it."],
+        "expected_original": "Open the 2026 Toronto form, then send it.",
+    })
 
 
 # ---- backward compatibility ----
