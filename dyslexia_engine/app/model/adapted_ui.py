@@ -20,9 +20,20 @@ APPROVED = ("accepted", "edited")
 
 
 def _find(text: str, original: str) -> re.Match | None:
-    """Locate `original` in `text`, ignoring differences in whitespace."""
-    pattern = r"\s+".join(re.escape(word) for word in original.split())
-    return re.search(pattern, text) if pattern else None
+    """Locate `original` in `text`, ignoring differences in whitespace.
+
+    Whole words only: "interest" must not match inside "uninterested". The boundary is only required on a side
+    where `original` starts or ends with a word character, so a sentence ending in "." still matches.
+    """
+    words = original.split()
+    if not words:
+        return None
+    pattern = r"\s+".join(re.escape(word) for word in words)
+    if re.match(r"\w", words[0]):
+        pattern = r"(?<!\w)" + pattern
+    if re.search(r"\w$", words[-1]):
+        pattern += r"(?!\w)"
+    return re.search(pattern, text)
 
 
 def select_usable(

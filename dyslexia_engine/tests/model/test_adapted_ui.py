@@ -159,3 +159,41 @@ def test_saved_adapted_ui_samples_match_the_code():
         saved_in["blocks"],
     )
     assert saved_out == res.spec.model_dump()
+
+
+# ---- whole-word matching: "interest" must not be found inside "uninterested" ----
+
+def _rec(id, block, original, suggestion, type="difficult_word", status="accepted"):
+    return Recommendation(id=id, block_id=block, type=type, original=original, suggestion=suggestion,
+                          rationale="r", evidence="e", status=status)
+
+
+def test_a_word_edit_does_not_touch_the_same_letters_inside_another_word():
+    blocks = [{"block_id": "p-1", "text": "Students were uninterested in interest rates."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "interest", "extra money")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students were uninterested in extra money rates."
+
+
+def test_an_edit_whose_text_only_appears_inside_a_longer_word_is_skipped_with_a_reason():
+    blocks = [{"block_id": "p-1", "text": "Students were uninterested in the lesson."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "interest", "extra money")], [], blocks)
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+def test_a_sentence_ending_in_a_full_stop_still_matches():
+    blocks = [{"block_id": "p-1", "text": "Students compare ways to save money. They also save."}]
+    out = generate_adapted_ui(
+        [_rec("r1", "p-1", "Students compare ways to save money.", "Students look at ways to save money.", type="long_sentence")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students look at ways to save money. They also save."
+
+
+def test_a_phrase_at_the_very_end_of_the_text_still_matches():
+    blocks = [{"block_id": "p-1", "text": "Students compare ways to save money. They also save"}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "They also save", "They spend less")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students compare ways to save money. They spend less"
+
+
+def test_whitespace_differences_still_match():
+    blocks = [{"block_id": "p-1", "text": "Students   compare\nways to save money."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "compare ways", "look at ways")], [], blocks)
+    assert "look at ways" in by_action(out, "replace_text")["p-1"]
