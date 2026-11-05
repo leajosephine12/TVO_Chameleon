@@ -32,6 +32,7 @@ To run everything from one address, build the client (`npm run build:client` in 
 | ---------------------- | ---------------------------------------------- |
 | `npm run dev`          | Dev server with hot reload                     |
 | `npm run typecheck`    | TypeScript check (strict mode)                 |
+| `npm test`             | Run the tests (Vitest, with jsdom for the DOM) |
 | `npm run build`        | Type check, then production build into `dist/` |
 | `npm run preview`      | Serve the production build locally             |
 | `npm run format`       | Format the code with Prettier                  |
