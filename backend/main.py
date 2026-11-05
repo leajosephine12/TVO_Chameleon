@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from app import adaptation_engine as engine
 from app.adaptation_engine import _index_blocks
 from app.model.adapted_ui import generate_adapted_ui
-from app.model.adapted_renderer import apply_adapted_spec
+from app.model.adapted_renderer import apply_adapted_spec, block_text, visible_text
 from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
@@ -47,9 +47,9 @@ def _text_blocks(html: str) -> list[dict]:
     """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
     index = _index_blocks(BeautifulSoup(html, "html.parser"))
     return [
-        {"block_id": bid, "text": tag.get_text(), "kind": tag.name}
+        {"block_id": bid, "text": visible_text(tag), "kind": tag.name}
         for bid, tag in index.items()
-        if tag.name in PROSE_TAGS and tag.get_text().strip()
+        if tag.name in PROSE_TAGS and visible_text(tag)
     ]
 
 
@@ -63,8 +63,7 @@ def _model_blocks(html: str, findings: list[dict], prose_blocks: list[dict]) -> 
         tag = index.get(block_id)
         if tag is None:
             continue
-        text = tag.get("alt", "") if tag.name == "img" else tag.get_text(" ", strip=True)
-        blocks[block_id] = {"block_id": block_id, "text": text, "kind": tag.name}
+        blocks[block_id] = {"block_id": block_id, "text": block_text(tag), "kind": tag.name}
     return list(blocks.values())
 
 
@@ -151,7 +150,7 @@ def adapted(req: AdaptRequest):
         soup = BeautifulSoup(result.adapted_html, "html.parser")
         index = _index_blocks(soup)
         blocks = [
-            {"block_id": b, "text": t.get_text(" ", strip=True), "kind": t.name, "alt": t.get("alt", "")}
+            {"block_id": b, "text": block_text(t), "kind": t.name, "alt": t.get("alt", "")}
             for b, t in index.items()
         ]
         # CSS suggestions are layout recs (call 2); everything else is a text rewrite (call 1)

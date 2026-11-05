@@ -1,7 +1,8 @@
 """Apply a validated AdaptedUISpec to HTML without executing arbitrary HTML or DOM operations."""
+import re
 from dataclasses import dataclass, field
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 from ..adaptation_engine import _index_blocks
 from .adapted_ui_spec import AdaptedUISpec
@@ -18,6 +19,89 @@ class RenderResult:
 
 def _squash(text: str) -> str:
     return " ".join(text.split())
+
+
+_BLOCK_TAGS = {
+    "address", "article", "aside", "blockquote", "dd", "details", "div", "dl", "dt", "fieldset", "figcaption",
+    "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol",
+    "p", "pre", "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+}
+
+
+def visible_text(tag: Tag) -> str:
+    """The text a reader sees in `tag`, with whitespace squashed.
+
+    A space goes between block elements and at a <br>, never between inline ones, so
+    '<a>the guide</a>, then' stays 'the guide, then' (get_text(" ") would give 'the guide , then').
+    Scripts, styles and comments are left out.
+    """
+    parts: list[str] = []
+    last_block = None
+    for node in tag.descendants:
+        if isinstance(node, Tag):
+            if node.name == "br":
+                parts.append(" ")
+            continue
+        if type(node) is not NavigableString:  # comments, scripts, styles, doctype
+            continue
+        block = next((p for p in node.parents if p is tag or p.name in _BLOCK_TAGS), tag)
+        if last_block is not None and block is not last_block:
+            parts.append(" ")
+        parts.append(str(node))
+        last_block = block
+    return " ".join("".join(parts).split())
+
+
+def block_text(tag: Tag) -> str:
+    """The text that identifies a block to the model and to expected_original: an image's alt, a button input's
+    value, otherwise what a reader sees."""
+    if tag.name == "img":
+        return tag.get("alt", "") or ""
+    if tag.name == "input":
+        return tag.get("value", "") or ""
+    return visible_text(tag)
+
+
+def _splits_word(text: str, i: int) -> bool:
+    """True when cutting `text` at index i would land in the middle of a word."""
+    return 0 < i < len(text) and text[i - 1].isalnum() and text[i].isalnum()
+
+
+def _replace_text(tag: Tag, value: str) -> None:
+    """Make the block's text `value`. Links, bold and other inline markup survive: only the words that changed are
+    edited, inside the one text node that holds them. Raises ValueError (nothing changed) when that is not possible."""
+    if not _has_rich_inline(tag):
+        tag.clear()
+        tag.append(value)
+        return
+    old, new = visible_text(tag), _squash(value)
+    if old == new:
+        return
+    n = min(len(old), len(new))
+    start = 0
+    while start < n and old[start] == new[start]:
+        start += 1
+    end = 0
+    while end < n - start and old[-1 - end] == new[-1 - end]:
+        end += 1
+    while start > 0 and (_splits_word(old, start) or _splits_word(new, start)):  # never cut a word in half
+        start -= 1
+    while end > 0 and (_splits_word(old, len(old) - end) or _splits_word(new, len(new) - end)):
+        end -= 1
+    old_part, new_part = old[start : len(old) - end], new[start : len(new) - end]
+    if not old_part.strip() or old.count(old_part) != 1:
+        raise ValueError("could not tell exactly which words changed, so the block was left as it was")
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in old_part.split()))
+    holders = [s for s in tag.find_all(string=True) if type(s) is NavigableString and pattern.search(s)]
+    if len(holders) != 1:
+        raise ValueError("the change crosses a link or formatting, so it was not applied (the markup is kept)")
+    holder = holders[0]
+    original = NavigableString(str(holder))
+    edited = NavigableString(pattern.sub(lambda _: new_part, str(holder), count=1))
+    holder.replace_with(edited)
+    if visible_text(tag) != new:  # safety net: never leave the block different from what was asked for
+        edited.replace_with(original)
+        raise ValueError("the edit did not give the requested text, so the block was left as it was")
 
 
 def _matches(current: str, expected: str) -> bool:
@@ -73,13 +157,12 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
 
         try:
             if change.action == "replace_text":
-                tag.clear()
-                tag.append(change.value)
+                _replace_text(tag, change.value)
             elif change.action == "set_style":
                 old = tag.get("style", "").rstrip("; ")
                 tag["style"] = f"{old}; {change.value}" if old else change.value
             elif change.action in {"text_to_list", "split_into_steps"}:
-                if not _matches(tag.get_text(" ", strip=True), change.expected_original):
+                if not _matches(visible_text(tag), change.expected_original):
                     raise ValueError("live text no longer matches expected_original")
                 if _has_rich_inline(tag):
                     raise ValueError("block contains links or inline formatting; rich content was preserved by skipping")
@@ -106,7 +189,7 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
             elif change.action == "add_button_label":
                 if tag.name != "button" and tag.get("role") != "button":
                     raise ValueError("target is not a button")
-                if change.expected_original is not None and not _matches(tag.get_text(" ", strip=True), change.expected_original):
+                if change.expected_original is not None and not _matches(visible_text(tag), change.expected_original):
                     raise ValueError("live text no longer matches expected_original")
                 label = soup.new_tag("span")
                 label["class"] = ["genui-button-label", f"genui-button-label--{change.placement}"]
@@ -130,12 +213,12 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
             elif change.action == "set_link_text":
                 if tag.name != "a":
                     raise ValueError("target is not a link")
-                if not _matches(tag.get_text(" ", strip=True), change.expected_original):
+                if not _matches(visible_text(tag), change.expected_original):
                     raise ValueError("live link text no longer matches expected_original")
                 tag.clear()
                 tag.append(change.text)
             elif change.action == "set_button_label":
-                current = tag.get("value", "") if tag.name == "input" else tag.get_text(" ", strip=True)
+                current = tag.get("value", "") if tag.name == "input" else visible_text(tag)
                 if not _matches(current, change.expected_original):
                     raise ValueError("live button label no longer matches expected_original")
                 if not _replace_button_text(soup, tag, change.label):
@@ -149,7 +232,7 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
             elif change.action == "add_section_heading":
                 if tag.name not in {"section", "article"}:
                     raise ValueError("target is not a section or article")
-                if not _matches(tag.get_text(" ", strip=True), change.expected_original):
+                if not _matches(visible_text(tag), change.expected_original):
                     raise ValueError("live section text no longer matches expected_original")
                 if tag.find(["h1", "h2", "h3", "h4", "h5", "h6"]):
                     raise ValueError("section already has a heading")

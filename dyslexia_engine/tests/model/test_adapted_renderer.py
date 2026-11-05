@@ -64,3 +64,80 @@ def test_menu_grouping_preserves_item_order():
     )
     soup = BeautifulSoup(result.html, "html.parser")
     assert [li.get_text() for li in soup.ul.find_all("li", recursive=False)] == ["First", "One", "Two", "Second", "Three"]
+
+
+# ---- visible text: no stray spaces, buttons and images read from their attributes ----
+
+import pytest  # noqa: E402
+
+from app.model.adapted_renderer import block_text, visible_text  # noqa: E402
+
+
+def tag_of(html, name="p"):
+    return BeautifulSoup(html, "html.parser").find(name)
+
+
+@pytest.mark.parametrize("html,expected", [
+    ('<p>See <a href="/x">the guide</a>, then <b>try it</b>.</p>', "See the guide, then try it."),   # no space before , or .
+    ("<p>Costs (<em>see below</em>) apply.</p>", "Costs (see below) apply."),
+    ("<ul><li>one</li><li>two</li></ul>", "one two"),                                                    # blocks are separated
+    ("<p>first<br>second</p>", "first second"),
+    ("<p>  lots \n of   space </p>", "lots of space"),
+    ("<p>shown<script>hidden()</script><!-- note --><style>p{}</style></p>", "shown"),
+])
+def test_visible_text(html, expected):
+    assert visible_text(tag_of(html, "p" if html.startswith("<p") else "ul")) == expected
+
+
+def test_block_text_reads_alt_and_value_and_falls_back_to_visible_text():
+    assert block_text(tag_of('<img src="a.png" alt="A coin jar">', "img")) == "A coin jar"
+    assert block_text(tag_of('<img src="a.png">', "img")) == ""
+    assert block_text(tag_of('<input type="submit" value="OK">', "input")) == "OK"
+    assert block_text(tag_of("<button>Go <b>now</b></button>", "button")) == "Go now"
+
+
+# ---- replace_text keeps links and bold ----
+
+LINKED = '<p>Students compare ways to save money. See <a href="/guide">the guide</a>, then <b>try it</b>.</p>'
+LINKED_TEXT = "Students compare ways to save money. See the guide, then try it."
+
+
+def test_replace_text_keeps_links_and_bold_around_the_edit():
+    result = render(LINKED, {"block_id": "p-1", "action": "replace_text",
+                             "value": "Students look at ways to save money. See the guide, then try it."})
+    assert result.skipped == {}
+    assert '<a href="/guide">the guide</a>' in result.html and "<b>try it</b>" in result.html
+    assert visible_text(BeautifulSoup(result.html, "html.parser").p) == "Students look at ways to save money. See the guide, then try it."
+
+
+def test_replace_text_on_a_plain_block_still_replaces_it():
+    result = render("<p>Old words here.</p>", {"block_id": "p-1", "action": "replace_text", "value": "New words here."})
+    assert result.html == "<p>New words here.</p>" and result.skipped == {}
+
+
+def test_a_word_inside_a_link_can_be_edited_in_place():
+    result = render(LINKED, {"block_id": "p-1", "action": "replace_text", "value": LINKED_TEXT.replace("the guide", "the handbook")})
+    assert '<a href="/guide">the handbook</a>' in result.html and result.skipped == {}
+
+
+def test_an_edit_that_spans_a_link_boundary_is_skipped_and_the_markup_is_kept():
+    result = render(LINKED, {"block_id": "p-1", "action": "replace_text", "value": LINKED_TEXT.replace("money. See the guide", "cash. Read the manual")})
+    assert 0 in result.skipped and "markup is kept" in result.skipped[0]
+    assert result.html == LINKED   # untouched
+
+
+def test_an_edit_in_the_middle_of_a_word_does_not_cut_it_in_half():
+    result = render('<p>Save <a href="/x">money</a> and saved time.</p>',
+                    {"block_id": "p-1", "action": "replace_text", "value": "Save money and saving time."})
+    assert result.skipped == {}
+    assert visible_text(BeautifulSoup(result.html, "html.parser").p) == "Save money and saving time."
+    assert '<a href="/x">money</a>' in result.html
+
+
+def test_an_ambiguous_edit_is_skipped_rather_than_applied_in_the_wrong_place():
+    html = '<p>Go <a href="/x">now</a>. Go now. Go now.</p>'
+    result = render(html, {"block_id": "p-1", "action": "replace_text", "value": "Go now. Go now. Go later."})
+    if result.skipped:
+        assert result.html == html
+    else:   # if it was applied, it must be exactly what was asked for
+        assert visible_text(BeautifulSoup(result.html, "html.parser").p) == "Go now. Go now. Go later."
