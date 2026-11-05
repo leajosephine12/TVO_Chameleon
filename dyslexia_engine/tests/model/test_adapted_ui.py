@@ -197,3 +197,50 @@ def test_whitespace_differences_still_match():
     blocks = [{"block_id": "p-1", "text": "Students   compare\nways to save money."}]
     out = generate_adapted_ui([_rec("r1", "p-1", "compare ways", "look at ways")], [], blocks)
     assert "look at ways" in by_action(out, "replace_text")["p-1"]
+
+
+# ---- one change the spec rejects must not take the other accepted edits down with it ----
+
+LONG_HEADING = "What interest means for people who borrow money from a bank"  # 58 characters, the limit is 40
+SECTION = "Interest is the cost of borrowing money over time."
+TWO_BLOCKS = [{"block_id": "p-1", "text": "Students compare ways to save money."}, {"block_id": "section-1", "text": SECTION}]
+
+
+def test_a_too_long_heading_is_skipped_and_the_good_edit_survives():
+    good = _rec("r1", "p-1", "compare ways", "look at ways", type="long_sentence")
+    bad = _rec("r2", "section-1", SECTION, LONG_HEADING, type="S3")
+    out = generate_adapted_ui([good, bad], [], TWO_BLOCKS)
+    assert by_action(out, "replace_text") == {"p-1": "Students look at ways to save money."}
+    assert [s.id for s in out.skipped] == ["r2"] and "40 characters" in out.skipped[0].reason
+
+
+@pytest.mark.parametrize("metric,block,original", [("J14", "input-1", ""), ("J5", "a-1", ""), ("S3", "section-1", "")])
+def test_structural_changes_with_no_original_are_skipped_not_a_crash(metric, block, original):
+    out = generate_adapted_ui([_rec("r1", block, original, "Short label", type=metric)], [], [{"block_id": block, "text": ""}])
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+def test_a_block_id_the_spec_does_not_accept_is_skipped_not_a_crash():
+    blocks = [{"block_id": "my-widget-1", "text": "Some text here."}, {"block_id": "p-1", "text": "Other text."}]
+    out = generate_adapted_ui([_rec("r1", "my-widget-1", "text here", "words here"), _rec("r2", "p-1", "Other", "Another")], [], blocks)
+    assert by_action(out, "replace_text") == {"p-1": "Another text."}
+    assert [s.id for s in out.skipped] == ["r1"]
+
+
+def test_every_recommendation_behind_a_rejected_block_is_reported():
+    blocks = [{"block_id": "p-1", "text": "One two three."}]
+    recs = [_rec("r1", "p-1", "One", "<b>1</b>"), _rec("r2", "p-1", "three", "3")]   # the merged text contains markup
+    out = generate_adapted_ui(recs, [], blocks)
+    assert out.spec.changes == [] and sorted(s.id for s in out.skipped) == ["r1", "r2"]
+
+
+def test_more_changes_than_a_spec_can_hold_are_reported_not_raised():
+    blocks = [{"block_id": f"p-{i}", "text": f"Sentence number {i} here."} for i in range(1, 103)]
+    recs = [_rec(f"r{i}", f"p-{i}", "Sentence", "Line") for i in range(1, 103)]
+    out = generate_adapted_ui(recs, [], blocks)
+    assert len(out.spec.changes) == 100 and [s.id for s in out.skipped] == ["r101", "r102"]
+
+
+def test_a_text_recommendation_with_no_original_says_so():
+    out = generate_adapted_ui([_rec("r1", "p-1", "", "New text", type="long_sentence")], [], [{"block_id": "p-1", "text": "Text."}])
+    assert out.skipped[0].reason == "there is no original text to replace."

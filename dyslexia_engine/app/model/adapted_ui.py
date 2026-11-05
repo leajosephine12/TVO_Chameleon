@@ -9,8 +9,10 @@ Pending and denied ones are ignored, so it is safe to pass every recommendation.
 """
 import re
 
+from pydantic import ValidationError
+
 from .adapted_ui_spec import (
-    AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
+    MAX_CHANGES, AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
     SetAltText, SetButtonLabel, SetLinkText, SetStyle, SkippedRecommendation,
     format_css, parse_css,
 )
@@ -66,59 +68,97 @@ def select_usable(
     return text_ok, layout_ok, skipped
 
 
+def _why(error: ValidationError) -> str:
+    """One readable sentence for the first thing the spec rejected."""
+    first = error.errors()[0]
+    where = ".".join(str(p) for p in first["loc"] if not isinstance(p, int))
+    return f"it does not fit the page change it becomes ({where + ': ' if where else ''}{first['msg']})."
+
+
+def _structural_change(r: Recommendation):
+    """The typed change for a structural recommendation (J5, J11, J12, J14, S3), or None for an ordinary text edit.
+
+    Raises ValidationError when the suggestion does not fit the action (for example a 58-character heading).
+    """
+    metric = r.type.upper()
+    if metric == "J5":
+        return SetLinkText(block_id=r.block_id, text=r.suggestion, expected_original=r.original)
+    if metric == "J12":
+        return SetAltText(block_id=r.block_id, alt=r.suggestion, expected_original=r.original)
+    if metric == "J14":
+        return SetButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original)
+    if metric == "S3":
+        return AddSectionHeading(block_id=r.block_id, heading=r.suggestion, expected_original=r.original)
+    if metric == "J11":
+        return AddButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original or None)
+    return None
+
+
 def _generate_plain(
     text_recs: list[Recommendation], layout_recs: list[Recommendation], blocks: list[dict] | None
 ) -> AdaptedUIResult:
+    """Build the spec one change at a time. A change the spec rejects is reported in `skipped`; it never takes the
+    other accepted changes down with it."""
     text_ok, layout_ok, skipped = select_usable(text_recs, layout_recs, blocks)
     block_text = {b["block_id"]: b["text"] for b in blocks or []}
 
+    def skip(ids: list[str], reason: str) -> None:
+        skipped.extend(SkippedRecommendation(id=i, reason=reason) for i in ids)
+
     new_text: dict[str, str] = {}
-    structural_changes = []
+    new_text_ids: dict[str, list[str]] = {}
+    structural: list[tuple[list[str], object]] = []
     content_blocks: set[str] = set()
     for r in text_ok:
-        metric = r.type.upper()
-        special = None
-        if metric == "J5":
-            special = SetLinkText(block_id=r.block_id, text=r.suggestion, expected_original=r.original)
-        elif metric == "J12":
-            special = SetAltText(block_id=r.block_id, alt=r.suggestion, expected_original=r.original)
-        elif metric == "J14":
-            special = SetButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original)
-        elif metric == "S3":
-            special = AddSectionHeading(block_id=r.block_id, heading=r.suggestion, expected_original=r.original)
-        elif metric == "J11":
-            special = AddButtonLabel(
-                block_id=r.block_id, label=r.suggestion,
-                expected_original=r.original or None,
-            )
+        try:
+            special = _structural_change(r)
+        except ValidationError as e:
+            skip([r.id], _why(e))
+            continue
         if special is not None:
             if r.block_id in content_blocks:
-                skipped.append(SkippedRecommendation(
-                    id=r.id, reason=f"another content or structural change already targets '{r.block_id}'."))
+                skip([r.id], f"another content or structural change already targets '{r.block_id}'.")
             else:
-                structural_changes.append(special)
+                structural.append(([r.id], special))
                 content_blocks.add(r.block_id)
             continue
         if r.block_id in content_blocks and r.block_id not in new_text:
-            skipped.append(SkippedRecommendation(
-                id=r.id, reason=f"a structural change already targets '{r.block_id}'."))
+            skip([r.id], f"a structural change already targets '{r.block_id}'.")
+            continue
+        if not r.original.strip():
+            skip([r.id], "there is no original text to replace.")
             continue
         current = new_text.get(r.block_id, block_text[r.block_id])
         match = _find(current, r.original)
         if match is None:  # an earlier accepted edit overlapped this one
-            skipped.append(SkippedRecommendation(id=r.id, reason=f"another accepted edit already changed the text of '{r.original[:40]}...'."))
+            skip([r.id], f"another accepted edit already changed the text of '{r.original[:40]}...'.")
             continue
         new_text[r.block_id] = current[: match.start()] + r.suggestion + current[match.end() :]
+        new_text_ids.setdefault(r.block_id, []).append(r.id)
         content_blocks.add(r.block_id)
 
     styles: dict[str, dict[str, str]] = {}
+    style_ids: dict[str, list[str]] = {}
     for r, declarations in layout_ok:
         styles.setdefault(r.block_id, {}).update(declarations)  # later recommendations win per property
+        style_ids.setdefault(r.block_id, []).append(r.id)
 
-    changes = [ReplaceText(block_id=b, value=t) for b, t in new_text.items()]
-    changes += structural_changes
-    changes += [SetStyle(block_id=b, value=format_css(d)) for b, d in styles.items()]
-    return AdaptedUIResult(spec=AdaptedUISpec(changes=changes), skipped=skipped)
+    owned: list[tuple[list[str], object]] = []  # (recommendation ids, change), so a rejected change can say whose it was
+    for block_id, text in new_text.items():
+        try:
+            owned.append((new_text_ids[block_id], ReplaceText(block_id=block_id, value=text)))
+        except ValidationError as e:
+            skip(new_text_ids[block_id], _why(e))
+    owned += structural
+    for block_id, declarations in styles.items():
+        try:
+            owned.append((style_ids[block_id], SetStyle(block_id=block_id, value=format_css(declarations))))
+        except ValidationError as e:
+            skip(style_ids[block_id], _why(e))
+
+    for ids, _ in owned[MAX_CHANGES:]:
+        skip(ids, f"one spec can hold at most {MAX_CHANGES} changes.")
+    return AdaptedUIResult(spec=AdaptedUISpec(changes=[change for _, change in owned[:MAX_CHANGES]]), skipped=skipped)
 
 
 def generate_adapted_ui(

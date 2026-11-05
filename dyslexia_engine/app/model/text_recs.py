@@ -14,7 +14,9 @@ from .guards import (
     check_original_is_quoted,
     check_rationale_numbers,
     check_status_pending,
+    check_structural_fields,
 )
+from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS
 from .prompts import build_messages, judgement_section
 from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
@@ -48,6 +50,15 @@ Only write recommendations for problems that appear in the findings. If there ar
 Keep the reply short, because a long reply is slow:
 - 'rationale' is at most 15 words.
 - Write compact JSON: no indentation and no blank lines."""
+
+
+def _structural_limits_note() -> str:
+    """The limits the typed page changes enforce, read from the spec so the prompt cannot drift from it."""
+    return (
+        f"\n\nLimits for the structural types: a J5, J11 or J14 label and an S3 heading are one line of at most "
+        f"{MAX_LABEL_CHARS} characters; J12 alt text is at most {MAX_ITEM_CHARS} characters. For J5, J14 and S3, "
+        "'original' is the current text, copied exactly, and is never empty."
+    )
 
 
 def _validate_input(blocks: list[dict]) -> None:
@@ -88,11 +99,12 @@ def generate_text_recommendations(
             partial(check_original_is_quoted, block_text=block_text),
             partial(check_rationale_numbers, findings=findings),
             check_meaning_preserved,
+            check_structural_fields,
         ]
         if judgement_checks:
             checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    instructions = INSTRUCTIONS
+    instructions = INSTRUCTIONS + _structural_limits_note()
     if max_recommendations:  # the cap travels with the call, so the prompt and cap_by_severity agree
         instructions += f"\n- At most {max_recommendations} recommendations: every long sentence first, then the hardest words if there is room."
     if judgement_checks:

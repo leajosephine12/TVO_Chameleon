@@ -166,3 +166,31 @@ def check_judgement_evidence(recs: list[Recommendation], judgement_ids: set[str]
                 f"Use one of: {', '.join(sorted(judgement_ids))}, or ground the recommendation in a finding."
             )
     return problems
+
+
+_LABEL_METRICS = {"J5", "J11", "J14", "S3"}  # become a short one-line link text, button label or heading
+_NEEDS_ORIGINAL = {"J5", "J14", "S3"}  # the renderer compares `original` with the live text before changing anything
+
+
+def check_structural_fields(recs: list[Recommendation]) -> list[str]:
+    """A structural suggestion must fit the typed action it turns into (adapted_ui_spec).
+
+    Without this a card appears, the user accepts it, and only then does the spec reject a 58-character heading.
+    """
+    from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS  # imported here: adapted_ui_spec imports this module
+
+    problems = []
+    for r in recs:
+        metric, suggestion = r.type.upper(), r.suggestion.strip()
+        if metric in _LABEL_METRICS | {"J12"} and not suggestion:
+            problems.append(f"{r.id}: for {metric} the suggestion cannot be empty.")
+        if metric in _LABEL_METRICS and (len(suggestion) > MAX_LABEL_CHARS or "\n" in suggestion or "\r" in suggestion):
+            problems.append(
+                f"{r.id}: for {metric} the suggestion must be one line of at most {MAX_LABEL_CHARS} characters "
+                f"({len(suggestion)} given). Shorten it."
+            )
+        if metric == "J12" and len(suggestion) > MAX_ITEM_CHARS:
+            problems.append(f"{r.id}: for J12 the alt text must be at most {MAX_ITEM_CHARS} characters ({len(suggestion)} given).")
+        if metric in _NEEDS_ORIGINAL and not r.original.strip():
+            problems.append(f"{r.id}: for {metric} 'original' must be the current text copied exactly; it cannot be empty.")
+    return problems
