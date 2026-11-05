@@ -1,3 +1,4 @@
+
 """Apply a validated AdaptedUISpec to HTML without executing arbitrary HTML or DOM operations."""
 import re
 from dataclasses import dataclass, field
@@ -7,7 +8,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from ..adaptation_engine import _index_blocks
 from .adapted_ui_spec import AdaptedUISpec
 
-_RICH_INLINE = {"a", "b", "strong", "i", "em", "u", "code", "mark", "abbr"}
+_RICH_INLINE = {"a", "b", "strong", "i", "em", "u", "code", "mark", "abbr", "span", "svg"}
 
 
 @dataclass
@@ -215,8 +216,9 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
                     raise ValueError("target is not a link")
                 if not _matches(visible_text(tag), change.expected_original):
                     raise ValueError("live link text no longer matches expected_original")
-                tag.clear()
-                tag.append(change.text)
+                _replace_text(tag, change.text)
+                if tag.has_attr("aria-label"):
+                    tag["aria-label"] = change.text
             elif change.action == "set_button_label":
                 current = tag.get("value", "") if tag.name == "input" else visible_text(tag)
                 if not _matches(current, change.expected_original):

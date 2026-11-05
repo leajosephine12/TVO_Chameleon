@@ -19,6 +19,8 @@ from .adapted_ui_spec import (
 from .schemas import Recommendation
 
 APPROVED = ("accepted", "edited")
+STRUCTURAL_METRIC_IDS = frozenset({"J5", "J11", "J12", "J14", "S3"})
+STRUCTURAL_METRICS_REQUIRING_ORIGINAL = frozenset({"J5", "J14", "S3"})
 
 
 def _find(text: str, original: str) -> re.Match | None:
@@ -51,9 +53,19 @@ def select_usable(
     skipped: list[SkippedRecommendation] = []
     text_ok, layout_ok = [], []
     for r in (r for r in text_recs if r.status in APPROVED):
+        metric = r.type.upper()
         if r.block_id not in block_text:
-            skipped.append(SkippedRecommendation(id=r.id, reason=f"block '{r.block_id}' was not in the blocks you passed."))
-        elif r.original and _find(block_text[r.block_id], r.original) is None:
+            skipped.append(SkippedRecommendation(
+                id=r.id, reason=f"block '{r.block_id}' was not in the blocks you passed."))
+            continue
+        current = block_text[r.block_id]
+        if metric in STRUCTURAL_METRICS_REQUIRING_ORIGINAL and not r.original.strip():
+            skipped.append(SkippedRecommendation(
+                id=r.id, reason=f"{metric} needs the original text so stale content is not changed."))
+        elif metric in STRUCTURAL_METRIC_IDS and not r.original.strip() and current.strip():
+            skipped.append(SkippedRecommendation(
+                id=r.id, reason=f"block '{r.block_id}' is no longer empty (the page may have changed)."))
+        elif r.original and _find(current, r.original) is None:
             skipped.append(SkippedRecommendation(
                 id=r.id, reason=f"the original text was not found in block '{r.block_id}' (the page may have changed)."))
         else:
@@ -75,22 +87,22 @@ def _why(error: ValidationError) -> str:
     return f"it does not fit the page change it becomes ({where + ': ' if where else ''}{first['msg']})."
 
 
-def _structural_change(r: Recommendation):
+def _structural_change(r: Recommendation, expected_original: str):
     """The typed change for a structural recommendation (J5, J11, J12, J14, S3), or None for an ordinary text edit.
 
     Raises ValidationError when the suggestion does not fit the action (for example a 58-character heading).
     """
     metric = r.type.upper()
     if metric == "J5":
-        return SetLinkText(block_id=r.block_id, text=r.suggestion, expected_original=r.original)
+        return SetLinkText(block_id=r.block_id, text=r.suggestion, expected_original=expected_original)
     if metric == "J12":
-        return SetAltText(block_id=r.block_id, alt=r.suggestion, expected_original=r.original)
+        return SetAltText(block_id=r.block_id, alt=r.suggestion, expected_original=expected_original)
     if metric == "J14":
-        return SetButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original)
+        return SetButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=expected_original)
     if metric == "S3":
-        return AddSectionHeading(block_id=r.block_id, heading=r.suggestion, expected_original=r.original)
+        return AddSectionHeading(block_id=r.block_id, heading=r.suggestion, expected_original=expected_original)
     if metric == "J11":
-        return AddButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=r.original or None)
+        return AddButtonLabel(block_id=r.block_id, label=r.suggestion, expected_original=expected_original or None)
     return None
 
 
@@ -100,7 +112,10 @@ def _generate_plain(
     """Build the spec one change at a time. A change the spec rejects is reported in `skipped`; it never takes the
     other accepted changes down with it."""
     text_ok, layout_ok, skipped = select_usable(text_recs, layout_recs, blocks)
-    block_text = {b["block_id"]: b["text"] for b in blocks or []}
+    block_text = {
+        b["block_id"]: b.get("alt", "") if b.get("kind") == "img" else b.get("text", "")
+        for b in blocks or []
+    }
 
     def skip(ids: list[str], reason: str) -> None:
         skipped.extend(SkippedRecommendation(id=i, reason=reason) for i in ids)
@@ -111,7 +126,7 @@ def _generate_plain(
     content_blocks: set[str] = set()
     for r in text_ok:
         try:
-            special = _structural_change(r)
+            special = _structural_change(r, block_text[r.block_id])
         except ValidationError as e:
             skip([r.id], _why(e))
             continue

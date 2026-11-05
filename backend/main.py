@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from app import adaptation_engine as engine
 from app.adaptation_engine import _index_blocks
-from app.model.adapted_ui import generate_adapted_ui
+from app.model.adapted_ui import STRUCTURAL_METRIC_IDS, generate_adapted_ui
 from app.model.adapted_renderer import apply_adapted_spec, block_text, visible_text
 from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
@@ -43,9 +43,8 @@ PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 app = FastAPI(title="chameleon-backend")
 
 
-def _text_blocks(html: str) -> list[dict]:
+def _text_blocks(index: dict) -> list[dict]:
     """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
-    index = _index_blocks(BeautifulSoup(html, "html.parser"))
     return [
         {"block_id": bid, "text": visible_text(tag), "kind": tag.name}
         for bid, tag in index.items()
@@ -53,11 +52,10 @@ def _text_blocks(html: str) -> list[dict]:
     ]
 
 
-def _model_blocks(html: str, findings: list[dict], prose_blocks: list[dict]) -> list[dict]:
+def _model_blocks(index: dict, findings: list[dict], prose_blocks: list[dict]) -> list[dict]:
     """Return prose plus DOM targets for the structural findings Call 1 can fix."""
-    supported = {"S3", "J5", "J11", "J12", "J14"}
-    wanted = {f["block_id"] for f in findings if f.get("metric_id") in supported}
-    index = _index_blocks(BeautifulSoup(html, "html.parser"))
+    # Structural metric support is shared with adapted_ui.
+    wanted = {f["block_id"] for f in findings if f.get("metric_id") in STRUCTURAL_METRIC_IDS}
     blocks = {b["block_id"]: b for b in prose_blocks}
     for block_id in wanted:
         tag = index.get(block_id)
@@ -98,12 +96,13 @@ def analyze(req: AnalyzeRequest):
 
     recs = engine.analyze_level1(html)
     model_errors = []
-    blocks = _text_blocks(html)
+    index = _index_blocks(BeautifulSoup(html, "html.parser"))
+    blocks = _text_blocks(index)
     findings = analyze_text(blocks)["findings"] + structure_checks(html, url=req.url)["findings"]
     if rendered:
         findings += rendered["findings"]
 
-    model_blocks = _model_blocks(html, findings, blocks)
+    model_blocks = _model_blocks(index, findings, blocks)
     if model_blocks:
         try:
             recs += generate_text_recommendations(
@@ -162,6 +161,8 @@ def adapted(req: AdaptRequest):
         skipped += [s.id for s in spec.skipped]
         rendered = apply_adapted_spec(str(soup), spec.spec)
         result.adapted_html = rendered.html
+        # The spec allows at most one content change and one set_style per block,
+        # so (block_id, is_style) uniquely identifies a recommendation here.
         failed_targets = {
             (spec.spec.changes[i].block_id, spec.spec.changes[i].action == "set_style")
             for i in rendered.skipped

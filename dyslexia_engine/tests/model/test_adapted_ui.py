@@ -22,6 +22,7 @@ def accept(recs, status="accepted"):
     return [r.model_copy(update={"status": status}) for r in recs]
 
 
+
 TEXT, LAYOUT = mock_recs("text_recs"), mock_recs("layout_recs")
 
 
@@ -244,3 +245,48 @@ def test_more_changes_than_a_spec_can_hold_are_reported_not_raised():
 def test_a_text_recommendation_with_no_original_says_so():
     out = generate_adapted_ui([_rec("r1", "p-1", "", "New text", type="long_sentence")], [], [{"block_id": "p-1", "text": "Text."}])
     assert out.skipped[0].reason == "there is no original text to replace."
+
+
+
+def test_structural_precondition_uses_the_whole_live_block_after_snippet_validation():
+    block = {
+        "block_id": "section-1",
+        "text": "Intro sentence. Students plant beans. Closing sentence.",
+        "kind": "section",
+    }
+    rec = _rec(
+        "r21",
+        "section-1",
+        "Students plant beans.",
+        "Garden activities",
+        type="S3",
+    )
+
+    result = generate_adapted_ui([rec], [], [block])
+
+    assert result.skipped == []
+    assert result.spec.changes[0].expected_original == block["text"]
+
+
+
+@pytest.mark.parametrize("metric,block,current", [
+    ("J5", "a-1", "click here"),
+    ("J14", "input-1", "OK"),
+    ("S3", "section-1", "Section body"),
+])
+def test_structural_changes_that_require_original_are_skipped_even_when_live_text_exists(metric, block, current):
+    out = generate_adapted_ui(
+        [_rec("r1", block, "", "Short label", type=metric)],
+        [],
+        [{"block_id": block, "text": current}],
+    )
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+@pytest.mark.parametrize("metric,block", [("J11", "button-1"), ("J12", "img-1")])
+def test_empty_original_is_only_safe_while_the_live_value_is_still_empty(metric, block):
+    current = {"block_id": block, "text": "Menu", "kind": "button"}
+    if metric == "J12":
+        current = {"block_id": block, "text": "", "alt": "A useful new description", "kind": "img"}
+    out = generate_adapted_ui([_rec("r1", block, "", "New accessible text", type=metric)], [], [current])
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]

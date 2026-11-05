@@ -1,3 +1,4 @@
+
 from bs4 import BeautifulSoup
 
 from app.model.adapted_renderer import apply_adapted_spec
@@ -141,3 +142,20 @@ def test_an_ambiguous_edit_is_skipped_rather_than_applied_in_the_wrong_place():
         assert result.html == html
     else:   # if it was applied, it must be exactly what was asked for
         assert visible_text(BeautifulSoup(result.html, "html.parser").p) == "Go now. Go now. Go later."
+
+
+def test_set_link_text_preserves_icon_and_updates_existing_accessible_name():
+    html = '<a href="/guide" aria-label="click here"><svg><path d="x"></path></svg><span>click here</span></a>'
+    result = render(
+        html,
+        {
+            "block_id": "a-1",
+            "action": "set_link_text",
+            "text": "Read the guide",
+            "expected_original": "click here",
+        },
+    )
+    soup = BeautifulSoup(result.html, "html.parser")
+    assert result.skipped == {}
+    assert soup.a.svg is not None and soup.a.span.get_text() == "Read the guide"
+    assert soup.a["href"] == "/guide" and soup.a["aria-label"] == "Read the guide"
