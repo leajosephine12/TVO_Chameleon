@@ -4,7 +4,7 @@ MODEL_MOCK=1        use the built-in mock, no network, no model needed
 MODEL_BASE_URL      OpenAI-compatible base URL (Ollama: http://localhost:11434/v1)
 MODEL_NAME          model tag to send (required in real mode)
 MODEL_API_KEY       optional; sent as a Bearer token when set
-MODEL_TIMEOUT       optional request timeout in seconds (default 120)
+MODEL_TIMEOUT       optional request timeout in seconds (default 600; a local model on a CPU took 198 s for one call)
 MODEL_REASONING_EFFORT  optional: none | low | medium | high. Sent as `reasoning_effort`. Use `none` with
                     "thinking" models such as Gemma 4, which otherwise spend minutes reasoning before answering
 MODEL_MAX_RETRIES   optional; retries after an invalid reply (default 2, so up to 3 calls)
@@ -16,7 +16,7 @@ import os
 from dataclasses import dataclass, field
 
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
-DEFAULT_TIMEOUT = 120.0
+DEFAULT_TIMEOUT = 600.0  # measured: gemma4:e4b on a CPU laptop needed 198 s per call, so 120 s timed out by default
 DEFAULT_MAX_RETRIES = 2
 _REASONING_EFFORTS = {"none", "low", "medium", "high"}
 _TRUTHY = {"1", "true", "yes", "on"}

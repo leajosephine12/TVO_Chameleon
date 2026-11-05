@@ -45,6 +45,11 @@ def call_model(
             return response.json()["choices"][0]["message"]["content"]
     except httpx.HTTPStatusError as e:
         raise ModelCallError(f"Model server returned HTTP {e.response.status_code}.") from None
+    except httpx.ReadTimeout:  # connected, but no reply in time: a slow model (a connect timeout still means "unreachable")
+        raise ModelCallError(
+            f"The model did not answer within {config.timeout:g} seconds. "
+            "Raise MODEL_TIMEOUT, or use a faster or smaller model."
+        ) from None
     except httpx.HTTPError as e:
         raise ModelCallError(f"Could not reach the model at {config.base_url}: {type(e).__name__}.") from None
     except (KeyError, IndexError, TypeError, ValueError):

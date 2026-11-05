@@ -174,3 +174,32 @@ def test_bad_reasoning_effort_is_a_clear_error(monkeypatch):
     monkeypatch.setenv("MODEL_REASONING_EFFORT", "max")
     with pytest.raises(ModelConfigError, match="MODEL_REASONING_EFFORT"):
         ModelConfig.from_env()
+
+
+# ---- timeouts ----
+
+def test_the_default_timeout_is_long_enough_for_a_slow_local_model():
+    assert ModelConfig.from_env().timeout >= 300   # a CPU laptop needed ~198 s per call
+
+
+def test_a_timeout_says_so_instead_of_claiming_the_server_is_unreachable(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "m")
+    monkeypatch.setenv("MODEL_TIMEOUT", "30")
+
+    def slow(request):
+        raise httpx.ReadTimeout("no bytes for a while")
+
+    with pytest.raises(ModelCallError) as e:
+        call_model(MSGS, task="text_recs", transport=fake_server(slow))
+    assert "did not answer within 30 seconds" in str(e.value) and "MODEL_TIMEOUT" in str(e.value)
+    assert "Could not reach" not in str(e.value)
+
+
+def test_a_connect_timeout_is_still_reported_as_unreachable(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "m")
+
+    def nobody_home(request):
+        raise httpx.ConnectTimeout("no route")
+
+    with pytest.raises(ModelCallError, match="Could not reach"):
+        call_model(MSGS, task="text_recs", transport=fake_server(nobody_home))

@@ -159,7 +159,7 @@ A value typed in PowerShell beats the file. `.env` is in `.gitignore`; never com
 | `MODEL_BASE_URL` | OpenAI-style server address | `http://localhost:11434/v1` (Ollama) |
 | `MODEL_NAME` | Model to ask for (required in real mode) | none |
 | `MODEL_API_KEY` | Optional key, sent as `Authorization: Bearer ...`. Environment only | none |
-| `MODEL_TIMEOUT` | Seconds to wait for one reply | `120` |
+| `MODEL_TIMEOUT` | Seconds to wait for one reply. A local model on a CPU laptop took about 200 s for one call | `600` |
 | `MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`, sent as `reasoning_effort`. **Use `none` with Gemma 4 on Ollama** (it is a "thinking" model; otherwise each call can take 9+ minutes on a CPU laptop) | not sent |
 | `MODEL_MAX_RETRIES` | Extra attempts after an invalid reply (`2` means up to 3 calls) | `2` |
 
@@ -333,7 +333,7 @@ Fixed renderer output: `text_to_list` produces `<ul><li>...</li></ul>` or `<ol><
 8. In **mock mode** the reply is fixed and ignores the input, so checks that compare against the input (known blocks, exact quoting, numbers, facts) are skipped; the schema, unique-id and `pending` checks still run. Real-model replies get all checks.
 9. Requests use `temperature: 0`. No streaming, and no JSON-mode or schema parameter is sent (the schema is in the prompt), so it works with any OpenAI-style server.
 10. Retries happen only when the reply is invalid. Network errors, bad settings and HTTP errors are not retried. Default is 2 retries (3 calls); each retry resends the whole conversation and, for call 2, the image.
-11. The default timeout is 120 seconds per call; the first call can be slower while Ollama loads the model.
+11. The default timeout is 600 seconds per call (it was 120, which a CPU-only local model exceeded); the first call can be slower while Ollama loads the model. A timeout is reported as "did not answer within N seconds", not as an unreachable server.
 12. **Number check:** only digits in the `rationale` are checked, against every number found anywhere in the findings (for call 2: the metrics, the guideline sentences and the applied values). Numbers written as words ("twenty-four") are not detected. `evidence` is not number-checked.
 13. **Meaning check** is a proxy: digits and mid-sentence capitalised words (names, places) in `original` must still appear in `suggestion`. A model can still change meaning in ways this cannot see. The prompt forbids it, and the UI shows both texts so a person accepts or denies each change.
 14. `original` must be a (whitespace-insensitive) quote from its block; otherwise the reply is rejected.
