@@ -210,3 +210,22 @@ def test_invalid_parameters_are_rejected(change):
 def test_one_bad_change_rejects_the_whole_spec():
     with pytest.raises(ValidationError):
         parse(VALID[0], {**VALID[2], "items": ["<b>x</b>", "y"]})
+
+
+# ---- a lone '<' in prose is text, a real tag is not ----
+
+from app.model.adapted_ui_spec import ReplaceText, TextToList  # noqa: E402
+
+
+@pytest.mark.parametrize("text", ["Keep it if 5 <x litres.", "Is x < y and y > z?", "Use <3 as a heart.", "a<b", "Cost: 5 < 10"])
+def test_prose_with_a_lone_less_than_sign_is_accepted(text):
+    assert ReplaceText(block_id="p-1", value=text).value == text
+    assert TextToList(block_id="p-1", list_type="bulleted", items=[text, "Second item"], expected_original=text + " Second item").items[0] == text
+
+
+@pytest.mark.parametrize("text", [
+    "<b>bold</b>", "Hi <script>alert(1)</script>", '<img src=x onerror="alert(1)">', "</p>", "x <!-- hidden --> y", "<!DOCTYPE html>",
+])
+def test_real_looking_markup_is_still_rejected(text):
+    with pytest.raises(ValidationError):
+        ReplaceText(block_id="p-1", value=text)
