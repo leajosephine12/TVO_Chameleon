@@ -14,7 +14,9 @@ from .guards import (
     check_original_is_quoted,
     check_rationale_numbers,
     check_status_pending,
+    check_structural_fields,
 )
+from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS
 from .prompts import build_messages, judgement_section
 from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
 from .schemas import Recommendation, RecommendationList
@@ -25,14 +27,20 @@ INSTRUCTIONS = """\
 You help make web page text easier to read for students with reading difficulties (target: Grade 3-5).
 You are given text blocks and findings from a readability tool: long sentences, reading levels and difficult words.
 
-For each problem listed in the findings, write one recommendation that rewrites ONLY the affected sentence or phrase in simpler words, usually by splitting a long sentence into shorter ones or swapping a hard word for an easier one.
+For each supported problem listed in the findings, write one recommendation. For readability findings, rewrite ONLY the affected sentence or phrase in simpler words. The supported structural findings are:
+- J5: replace generic link text with a descriptive label; use type "J5".
+- J11: add a short visible label to an icon-only button; use type "J11".
+- J12: replace generic or filename alt text with concise useful alt text; use type "J12".
+- J14: replace a vague button label with a verb plus object; use type "J14".
+- S3: add a concise heading describing the section; use type "S3".
+Ignore other structural findings because this call has no safe action for them.
 
 Field guide:
 - id: "r1", "r2", ... (the system renumbers them).
 - block_id: the block the text came from.
-- type: "long_sentence", "difficult_word" or "reading_level".
-- original: the affected text, copied exactly from the block.
-- suggestion: your simpler version. Same facts, same numbers, same names.
+- type: "long_sentence", "difficult_word", "reading_level", or a supported structural metric id above.
+- original: the affected text, copied exactly from the block (it may be empty for an icon-only control).
+- suggestion: for readability findings, your simpler version with the same facts, numbers and names. For J5/J11/J12/J14/S3, the new label, alt text or heading described above.
 - rationale: one short sentence saying why. If you mention a number (word count, reading level, target), copy it from the findings exactly, for example "24 words; Grade 3-5 target <= 15-20".
 - evidence: where the rule comes from, for example "readability tool / W3C COGA".
 - severity: "high" for a problem far beyond the target, "medium" for a clear problem, "low" for a small one.
@@ -42,6 +50,15 @@ Only write recommendations for problems that appear in the findings. If there ar
 Keep the reply short, because a long reply is slow:
 - 'rationale' is at most 15 words.
 - Write compact JSON: no indentation and no blank lines."""
+
+
+def _structural_limits_note() -> str:
+    """The limits the typed page changes enforce, read from the spec so the prompt cannot drift from it."""
+    return (
+        f"\n\nLimits for the structural types: a J5, J11 or J14 label and an S3 heading are one line of at most "
+        f"{MAX_LABEL_CHARS} characters; J12 alt text is at most {MAX_ITEM_CHARS} characters. For J5, J14 and S3, "
+        "'original' is the current text, copied exactly, and is never empty."
+    )
 
 
 def _validate_input(blocks: list[dict]) -> None:
@@ -82,11 +99,12 @@ def generate_text_recommendations(
             partial(check_original_is_quoted, block_text=block_text),
             partial(check_rationale_numbers, findings=findings),
             check_meaning_preserved,
+            check_structural_fields,
         ]
         if judgement_checks:
             checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    instructions = INSTRUCTIONS
+    instructions = INSTRUCTIONS + _structural_limits_note()
     if max_recommendations:  # the cap travels with the call, so the prompt and cap_by_severity agree
         instructions += f"\n- At most {max_recommendations} recommendations: every long sentence first, then the hardest words if there is room."
     if judgement_checks:

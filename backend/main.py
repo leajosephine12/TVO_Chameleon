@@ -26,7 +26,8 @@ from pydantic import BaseModel
 
 from app import adaptation_engine as engine
 from app.adaptation_engine import _index_blocks
-from app.model.adapted_ui import generate_adapted_ui
+from app.model.adapted_ui import STRUCTURAL_METRIC_IDS, generate_adapted_ui
+from app.model.adapted_renderer import apply_adapted_spec, block_text, visible_text
 from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
@@ -42,14 +43,26 @@ PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 app = FastAPI(title="chameleon-backend")
 
 
-def _text_blocks(html: str) -> list[dict]:
+def _text_blocks(index: dict) -> list[dict]:
     """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
-    index = _index_blocks(BeautifulSoup(html, "html.parser"))
     return [
-        {"block_id": bid, "text": tag.get_text(), "kind": tag.name}
+        {"block_id": bid, "text": visible_text(tag), "kind": tag.name}
         for bid, tag in index.items()
-        if tag.name in PROSE_TAGS and tag.get_text().strip()
+        if tag.name in PROSE_TAGS and visible_text(tag)
     ]
+
+
+def _model_blocks(index: dict, findings: list[dict], prose_blocks: list[dict]) -> list[dict]:
+    """Return prose plus DOM targets for the structural findings Call 1 can fix."""
+    # Structural metric support is shared with adapted_ui.
+    wanted = {f["block_id"] for f in findings if f.get("metric_id") in STRUCTURAL_METRIC_IDS}
+    blocks = {b["block_id"]: b for b in prose_blocks}
+    for block_id in wanted:
+        tag = index.get(block_id)
+        if tag is None:
+            continue
+        blocks[block_id] = {"block_id": block_id, "text": block_text(tag), "kind": tag.name}
+    return list(blocks.values())
 
 
 # Reviewer attention is the budget now, not model speed (the 4 was tuned for local Gemma).
@@ -83,15 +96,17 @@ def analyze(req: AnalyzeRequest):
 
     recs = engine.analyze_level1(html)
     model_errors = []
-    blocks = _text_blocks(html)
+    index = _index_blocks(BeautifulSoup(html, "html.parser"))
+    blocks = _text_blocks(index)
     findings = analyze_text(blocks)["findings"] + structure_checks(html, url=req.url)["findings"]
     if rendered:
         findings += rendered["findings"]
 
-    if blocks:
+    model_blocks = _model_blocks(index, findings, blocks)
+    if model_blocks:
         try:
             recs += generate_text_recommendations(
-                blocks, {"findings": findings}, start_id=len(recs) + 1,
+                model_blocks, {"findings": findings}, start_id=len(recs) + 1,
                 max_recommendations=MAX_RECS, judgement_checks=TEXT_JUDGEMENT,
             )
         except MODEL_ERRORS as e:
@@ -133,7 +148,10 @@ def adapted(req: AdaptRequest):
     if any(r.status in ("accepted", "edited") for r in model_recs):
         soup = BeautifulSoup(result.adapted_html, "html.parser")
         index = _index_blocks(soup)
-        blocks = [{"block_id": b, "text": t.get_text()} for b, t in index.items()]
+        blocks = [
+            {"block_id": b, "text": block_text(t), "kind": t.name, "alt": t.get("alt", "")}
+            for b, t in index.items()
+        ]
         # CSS suggestions are layout recs (call 2); everything else is a text rewrite (call 1)
         spec = generate_adapted_ui(
             [r for r in model_recs if not _is_css(r)],
@@ -141,22 +159,21 @@ def adapted(req: AdaptRequest):
             blocks,
         )
         skipped += [s.id for s in spec.skipped]
-        for change in spec.spec.changes:
-            tag = index.get(change.block_id)
-            if tag is None:
+        rendered = apply_adapted_spec(str(soup), spec.spec)
+        result.adapted_html = rendered.html
+        # The spec allows at most one content change and one set_style per block,
+        # so (block_id, is_style) uniquely identifies a recommendation here.
+        failed_targets = {
+            (spec.spec.changes[i].block_id, spec.spec.changes[i].action == "set_style")
+            for i in rendered.skipped
+        }
+        for r in model_recs:
+            if r.status not in ("accepted", "edited") or r.id in skipped:
                 continue
-            if change.action == "replace_text":
-                # ponytail: replaces the block's text wholesale, dropping inline tags
-                # inside it. Fine for prose paragraphs; revisit if blocks carry links.
-                tag.clear()
-                tag.append(change.value)
-            elif change.action == "set_style":
-                old = tag.get("style", "").rstrip("; ")
-                tag["style"] = f"{old}; {change.value}" if old else change.value
-        result.adapted_html = str(soup)
-        result.applied = result.applied + [
-            r.id for r in model_recs if r.status in ("accepted", "edited") and r.id not in skipped
-        ]
+            if (r.block_id, _is_css(r)) in failed_targets:
+                skipped.append(r.id)
+            else:
+                result.applied.append(r.id)
 
     return {
         "adapted_html": result.adapted_html,

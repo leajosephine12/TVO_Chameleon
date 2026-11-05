@@ -124,6 +124,13 @@ def _mid_sentence_capitals(text: str) -> set[str]:
     }
 
 
+def lost_facts(original: str, rewritten: str) -> list[str]:
+    """Return the numbers and proper-name proxies lost by a rewrite."""
+    missing_nums = sorted(numbers_in(original) - numbers_in(rewritten))
+    missing_names = sorted(w for w in _mid_sentence_capitals(original) if w not in rewritten)
+    return missing_nums + missing_names
+
+
 def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
     """Cheap proxy for 'same facts': digits and names in the original must survive in the suggestion.
 
@@ -132,10 +139,15 @@ def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
     """
     problems = []
     for r in recs:
-        missing_nums = sorted(numbers_in(r.original) - numbers_in(r.suggestion))
-        missing_names = sorted(w for w in _mid_sentence_capitals(r.original) if w not in r.suggestion)
-        if missing_nums or missing_names:
-            lost = ", ".join(missing_nums + missing_names)
+        # These suggestions are element labels/metadata, not rewrites of the whole
+        # original block. A short S3 heading, for example, should not have to repeat
+        # every fact in its section. The typed actions still use expected_original
+        # as a stale-content precondition when the spec is applied.
+        if r.type.upper() in {"J5", "J11", "J12", "J14", "S3"}:
+            continue
+        missing = lost_facts(r.original, r.suggestion)
+        if missing:
+            lost = ", ".join(missing)
             problems.append(f"{r.id}: suggestion lost facts from the original ({lost}). Keep every fact, number and name.")
     return problems
 
@@ -153,4 +165,32 @@ def check_judgement_evidence(recs: list[Recommendation], judgement_ids: set[str]
                 f"{r.id}: evidence cites unknown judgement metric '{m.group(1)}'. "
                 f"Use one of: {', '.join(sorted(judgement_ids))}, or ground the recommendation in a finding."
             )
+    return problems
+
+
+_LABEL_METRICS = {"J5", "J11", "J14", "S3"}  # become a short one-line link text, button label or heading
+_NEEDS_ORIGINAL = {"J5", "J14", "S3"}  # the renderer compares `original` with the live text before changing anything
+
+
+def check_structural_fields(recs: list[Recommendation]) -> list[str]:
+    """A structural suggestion must fit the typed action it turns into (adapted_ui_spec).
+
+    Without this a card appears, the user accepts it, and only then does the spec reject a 58-character heading.
+    """
+    from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS  # imported here: adapted_ui_spec imports this module
+
+    problems = []
+    for r in recs:
+        metric, suggestion = r.type.upper(), r.suggestion.strip()
+        if metric in _LABEL_METRICS | {"J12"} and not suggestion:
+            problems.append(f"{r.id}: for {metric} the suggestion cannot be empty.")
+        if metric in _LABEL_METRICS and (len(suggestion) > MAX_LABEL_CHARS or "\n" in suggestion or "\r" in suggestion):
+            problems.append(
+                f"{r.id}: for {metric} the suggestion must be one line of at most {MAX_LABEL_CHARS} characters "
+                f"({len(suggestion)} given). Shorten it."
+            )
+        if metric == "J12" and len(suggestion) > MAX_ITEM_CHARS:
+            problems.append(f"{r.id}: for J12 the alt text must be at most {MAX_ITEM_CHARS} characters ({len(suggestion)} given).")
+        if metric in _NEEDS_ORIGINAL and not r.original.strip():
+            problems.append(f"{r.id}: for {metric} 'original' must be the current text copied exactly; it cannot be empty.")
     return problems

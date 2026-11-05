@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.model.adapted_ui import generate_adapted_ui
-from app.model.adapted_ui_spec import AdaptedUISpec, Change, parse_css
+from app.model.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
 from app.model.mock import mock_response
 from app.model.sample_data import SAMPLE_BLOCKS
 from app.model.schemas import Recommendation
@@ -20,6 +20,7 @@ def mock_recs(task):
 
 def accept(recs, status="accepted"):
     return [r.model_copy(update={"status": status}) for r in recs]
+
 
 
 TEXT, LAYOUT = mock_recs("text_recs"), mock_recs("layout_recs")
@@ -98,6 +99,27 @@ def test_structural_suggestion_is_skipped_with_a_reason():
     assert res.spec.changes == [] and res.skipped[0].id == "r7" and "Structural" in res.skipped[0].reason
 
 
+@pytest.mark.parametrize("metric,block,original,suggestion,action", [
+    ("J5", {"block_id": "a-1", "text": "click here", "kind": "a"},
+     "click here", "Read the course guide", "set_link_text"),
+    ("J11", {"block_id": "button-1", "text": "", "kind": "button"},
+     "", "Open menu", "add_button_label"),
+    ("J12", {"block_id": "img-1", "text": "", "alt": "image", "kind": "img"},
+     "image", "Students planting beans", "set_alt_text"),
+    ("J14", {"block_id": "button-1", "text": "Submit", "kind": "button"},
+     "Submit", "Submit application", "set_button_label"),
+    ("S3", {"block_id": "section-1", "text": "Students plant beans.", "kind": "section"},
+     "Students plant beans.", "Garden activities", "add_section_heading"),
+])
+def test_structural_metrics_map_to_typed_actions(metric, block, original, suggestion, action):
+    rec = Recommendation(
+        id="r20", block_id=block["block_id"], type=metric, original=original, suggestion=suggestion,
+        rationale="Clearer control.", evidence=f"structure check / {metric}", severity="medium", status="accepted",
+    )
+    result = generate_adapted_ui([rec], [], [block])
+    assert len(result.spec.changes) == 1 and result.spec.changes[0].action == action
+
+
 # ---- the spec itself ----
 
 def test_output_is_exactly_the_placeholder_shape():
@@ -122,9 +144,9 @@ def test_unsafe_or_malformed_css_is_rejected(css):
 
 def test_html_in_replace_text_is_rejected():
     with pytest.raises(ValidationError):
-        Change(block_id="p-1", action="replace_text", value="Hi <script>alert(1)</script>")
+        ReplaceText(block_id="p-1", value="Hi <script>alert(1)</script>")
     with pytest.raises(ValidationError):
-        Change(block_id="page", action="replace_text", value="text")
+        ReplaceText(block_id="page", value="text")
     with pytest.raises(ValidationError):
         AdaptedUISpec.model_validate({"changes": [{"block_id": "p-1", "action": "delete", "value": "x"}]})
 
@@ -138,3 +160,133 @@ def test_saved_adapted_ui_samples_match_the_code():
         saved_in["blocks"],
     )
     assert saved_out == res.spec.model_dump()
+
+
+# ---- whole-word matching: "interest" must not be found inside "uninterested" ----
+
+def _rec(id, block, original, suggestion, type="difficult_word", status="accepted"):
+    return Recommendation(id=id, block_id=block, type=type, original=original, suggestion=suggestion,
+                          rationale="r", evidence="e", status=status)
+
+
+def test_a_word_edit_does_not_touch_the_same_letters_inside_another_word():
+    blocks = [{"block_id": "p-1", "text": "Students were uninterested in interest rates."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "interest", "extra money")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students were uninterested in extra money rates."
+
+
+def test_an_edit_whose_text_only_appears_inside_a_longer_word_is_skipped_with_a_reason():
+    blocks = [{"block_id": "p-1", "text": "Students were uninterested in the lesson."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "interest", "extra money")], [], blocks)
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+def test_a_sentence_ending_in_a_full_stop_still_matches():
+    blocks = [{"block_id": "p-1", "text": "Students compare ways to save money. They also save."}]
+    out = generate_adapted_ui(
+        [_rec("r1", "p-1", "Students compare ways to save money.", "Students look at ways to save money.", type="long_sentence")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students look at ways to save money. They also save."
+
+
+def test_a_phrase_at_the_very_end_of_the_text_still_matches():
+    blocks = [{"block_id": "p-1", "text": "Students compare ways to save money. They also save"}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "They also save", "They spend less")], [], blocks)
+    assert by_action(out, "replace_text")["p-1"] == "Students compare ways to save money. They spend less"
+
+
+def test_whitespace_differences_still_match():
+    blocks = [{"block_id": "p-1", "text": "Students   compare\nways to save money."}]
+    out = generate_adapted_ui([_rec("r1", "p-1", "compare ways", "look at ways")], [], blocks)
+    assert "look at ways" in by_action(out, "replace_text")["p-1"]
+
+
+# ---- one change the spec rejects must not take the other accepted edits down with it ----
+
+LONG_HEADING = "What interest means for people who borrow money from a bank"  # 58 characters, the limit is 40
+SECTION = "Interest is the cost of borrowing money over time."
+TWO_BLOCKS = [{"block_id": "p-1", "text": "Students compare ways to save money."}, {"block_id": "section-1", "text": SECTION}]
+
+
+def test_a_too_long_heading_is_skipped_and_the_good_edit_survives():
+    good = _rec("r1", "p-1", "compare ways", "look at ways", type="long_sentence")
+    bad = _rec("r2", "section-1", SECTION, LONG_HEADING, type="S3")
+    out = generate_adapted_ui([good, bad], [], TWO_BLOCKS)
+    assert by_action(out, "replace_text") == {"p-1": "Students look at ways to save money."}
+    assert [s.id for s in out.skipped] == ["r2"] and "40 characters" in out.skipped[0].reason
+
+
+@pytest.mark.parametrize("metric,block,original", [("J14", "input-1", ""), ("J5", "a-1", ""), ("S3", "section-1", "")])
+def test_structural_changes_with_no_original_are_skipped_not_a_crash(metric, block, original):
+    out = generate_adapted_ui([_rec("r1", block, original, "Short label", type=metric)], [], [{"block_id": block, "text": ""}])
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+def test_a_block_id_the_spec_does_not_accept_is_skipped_not_a_crash():
+    blocks = [{"block_id": "my-widget-1", "text": "Some text here."}, {"block_id": "p-1", "text": "Other text."}]
+    out = generate_adapted_ui([_rec("r1", "my-widget-1", "text here", "words here"), _rec("r2", "p-1", "Other", "Another")], [], blocks)
+    assert by_action(out, "replace_text") == {"p-1": "Another text."}
+    assert [s.id for s in out.skipped] == ["r1"]
+
+
+def test_every_recommendation_behind_a_rejected_block_is_reported():
+    blocks = [{"block_id": "p-1", "text": "One two three."}]
+    recs = [_rec("r1", "p-1", "One", "<b>1</b>"), _rec("r2", "p-1", "three", "3")]   # the merged text contains markup
+    out = generate_adapted_ui(recs, [], blocks)
+    assert out.spec.changes == [] and sorted(s.id for s in out.skipped) == ["r1", "r2"]
+
+
+def test_more_changes_than_a_spec_can_hold_are_reported_not_raised():
+    blocks = [{"block_id": f"p-{i}", "text": f"Sentence number {i} here."} for i in range(1, 103)]
+    recs = [_rec(f"r{i}", f"p-{i}", "Sentence", "Line") for i in range(1, 103)]
+    out = generate_adapted_ui(recs, [], blocks)
+    assert len(out.spec.changes) == 100 and [s.id for s in out.skipped] == ["r101", "r102"]
+
+
+def test_a_text_recommendation_with_no_original_says_so():
+    out = generate_adapted_ui([_rec("r1", "p-1", "", "New text", type="long_sentence")], [], [{"block_id": "p-1", "text": "Text."}])
+    assert out.skipped[0].reason == "there is no original text to replace."
+
+
+
+def test_structural_precondition_uses_the_whole_live_block_after_snippet_validation():
+    block = {
+        "block_id": "section-1",
+        "text": "Intro sentence. Students plant beans. Closing sentence.",
+        "kind": "section",
+    }
+    rec = _rec(
+        "r21",
+        "section-1",
+        "Students plant beans.",
+        "Garden activities",
+        type="S3",
+    )
+
+    result = generate_adapted_ui([rec], [], [block])
+
+    assert result.skipped == []
+    assert result.spec.changes[0].expected_original == block["text"]
+
+
+
+@pytest.mark.parametrize("metric,block,current", [
+    ("J5", "a-1", "click here"),
+    ("J14", "input-1", "OK"),
+    ("S3", "section-1", "Section body"),
+])
+def test_structural_changes_that_require_original_are_skipped_even_when_live_text_exists(metric, block, current):
+    out = generate_adapted_ui(
+        [_rec("r1", block, "", "Short label", type=metric)],
+        [],
+        [{"block_id": block, "text": current}],
+    )
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]
+
+
+@pytest.mark.parametrize("metric,block", [("J11", "button-1"), ("J12", "img-1")])
+def test_empty_original_is_only_safe_while_the_live_value_is_still_empty(metric, block):
+    current = {"block_id": block, "text": "Menu", "kind": "button"}
+    if metric == "J12":
+        current = {"block_id": block, "text": "", "alt": "A useful new description", "kind": "img"}
+    out = generate_adapted_ui([_rec("r1", block, "", "New accessible text", type=metric)], [], [current])
+    assert out.spec.changes == [] and [s.id for s in out.skipped] == ["r1"]

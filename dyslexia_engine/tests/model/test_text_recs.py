@@ -150,3 +150,42 @@ def test_seven_recommendations_are_capped_to_the_four_most_severe_and_renumbered
     assert sorted(r.severity for r in out) == ["high", "high", "medium", "medium"]
     assert any("dropped 3" in m.getMessage() for m in caplog.records)
     assert len(gen(FakeModel(reply(*recs)), max_recommendations=None)) == 7
+
+
+# ---- structural suggestions must fit the typed action, so a card is never shown that cannot be applied ----
+
+from app.model.guards import check_structural_fields  # noqa: E402
+
+SECTION_QUOTE = "Students compare different ways"  # a real snippet of p-1
+
+
+def structural(metric, suggestion, original=SECTION_QUOTE, **kw):
+    return rec(type=metric, original=original, suggestion=suggestion, rationale="needed", evidence="structure check", severity="low", **kw)
+
+
+def test_the_structural_guard_flags_long_empty_and_multiline_suggestions():
+    from app.model.schemas import Recommendation
+    mk = lambda **kw: Recommendation(**(dict(id="r1", block_id="p-1", type="S3", original="x", suggestion="Short", rationale="r", evidence="e") | kw))
+    assert check_structural_fields([mk()]) == []
+    assert "at most 40 characters" in check_structural_fields([mk(suggestion="x" * 41)])[0]
+    assert "one line" in check_structural_fields([mk(suggestion="Two\nlines")])[0]
+    assert "cannot be empty" in check_structural_fields([mk(suggestion="  ")])[0]
+    assert "cannot be empty" in check_structural_fields([mk(type="J14", original="")])[0]
+    assert check_structural_fields([mk(type="J12", original="", suggestion="x" * 500)]) == []   # alt text may have no original
+    assert "at most 500" in check_structural_fields([mk(type="J12", suggestion="x" * 501)])[0]
+    assert check_structural_fields([mk(type="long_sentence", suggestion="y" * 900)]) == []        # ordinary text is not limited
+
+
+def test_a_58_character_heading_is_rejected_and_the_model_gets_a_chance_to_shorten_it():
+    long_heading = "What interest means for people who borrow money from a bank"
+    fake = FakeModel(reply(structural("S3", long_heading)), reply(structural("S3", "What interest means")))
+    out = gen(fake)
+    assert out[0].suggestion == "What interest means" and len(fake.calls) == 2
+    assert "at most 40 characters" in fake.calls[1][-1]["content"]
+
+
+def test_the_prompt_states_the_structural_limits_from_the_spec():
+    from app.model.adapted_ui_spec import MAX_LABEL_CHARS
+    fake = FakeModel(reply(rec()))
+    gen(fake)
+    assert f"at most {MAX_LABEL_CHARS} characters" in fake.calls[0][0]["content"] and "never empty" in fake.calls[0][0]["content"]

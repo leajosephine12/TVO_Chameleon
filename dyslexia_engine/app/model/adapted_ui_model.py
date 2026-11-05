@@ -1,12 +1,16 @@
 """Call 3, model version. Optional: plain code (adapted_ui.py) is the recommended implementation.
 
-The model is given the accepted recommendations and the block texts and must return the placeholder spec.
+The model is given the accepted recommendations and the block texts and must return the spec, using only
+replace_text and set_style (the recommendations carry no input for the structural actions).
 Its output is accepted only if it passes checks that make it equivalent in substance to the plain-code result:
 every accepted suggestion appears word for word, replaced originals are gone, numbers survive, and styles match.
 """
 from functools import partial
+from typing import Annotated, Union
 
-from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, parse_css
+from pydantic import BaseModel, Field
+
+from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetStyle, parse_css
 from .adapted_ui import select_usable
 from .client import call_model
 from .config import ModelConfig
@@ -17,12 +21,20 @@ from .schemas import Recommendation
 
 TASK = "adapted_ui"
 
+# Call 3 is explicitly limited to these actions. Do not spend prompt tokens on the
+# structural-action schemas that the model is forbidden to return.
+Call3Change = Annotated[Union[ReplaceText, SetStyle], Field(discriminator="action")]
+
+
+class Call3Spec(BaseModel):
+    changes: list[Call3Change] = Field(max_length=100)
+
 INSTRUCTIONS = """\
 You build the adapted version of a web page from the changes a user accepted.
 You get the text blocks that have accepted text recommendations, the accepted text recommendations, and the accepted layout (CSS) recommendations.
 Return a JSON object {"changes": [...]}. Each change has:
 - block_id: the block it applies to ("page" is allowed for set_style only)
-- action: "replace_text" or "set_style"
+- action: "replace_text" or "set_style" (do not use any other action)
 - value: see the rules"""
 
 
@@ -50,6 +62,8 @@ def _check_spec(
             elif c.block_id in replaced:
                 problems.append(f"More than one replace_text for '{c.block_id}'. Merge them into one.")
             replaced[c.block_id] = c.value
+        elif c.action != "set_style":
+            problems.append(f"'{c.action}' for '{c.block_id}' was not asked for. Use only replace_text and set_style.")
         else:
             if c.block_id not in style_blocks:
                 problems.append(f"set_style for '{c.block_id}', which has no accepted layout recommendation.")
@@ -114,8 +128,9 @@ def generate_adapted_ui_with_model(
     }
     # The mock returns a fixed reply that ignores its input, so only the schema check applies to it.
     checks = () if config.mock else (partial(_check_spec, text_recs=text_ok, layout_recs=layout_ok, block_text=block_text),)
-    spec = run_task(
-        task=TASK, messages=build_messages(INSTRUCTIONS, AdaptedUISpec, data, rules=ADAPT_RULES),
-        schema=AdaptedUISpec, checks=checks, max_retries=max_retries, config=config, transport=transport, caller=caller,
+    call3_spec = run_task(
+        task=TASK, messages=build_messages(INSTRUCTIONS, Call3Spec, data, rules=ADAPT_RULES),
+        schema=Call3Spec, checks=checks, max_retries=max_retries, config=config, transport=transport, caller=caller,
     )
+    spec = AdaptedUISpec.model_validate(call3_spec.model_dump())
     return AdaptedUIResult(spec=spec, skipped=skipped)

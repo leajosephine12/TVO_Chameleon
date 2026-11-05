@@ -26,7 +26,8 @@ change any teammate file. **Importing it does not need `fastmcp`** (a test check
 | `prompts.py` | Rules shared by every prompt |
 | `text_recs.py` | Call 1: `generate_text_recommendations(blocks, findings)` |
 | `layout_recs.py` | Call 2: `generate_layout_recommendations(screenshot, metrics)` (needs a vision model) |
-| `adapted_ui.py`, `adapted_ui_model.py`, `adapted_ui_spec.py` | Call 3: `generate_adapted_ui(...)`, plain code by default, model version optional, placeholder spec |
+| `adapted_ui.py`, `adapted_ui_model.py`, `adapted_ui_spec.py` | Call 3: `generate_adapted_ui(...)`, plain code by default, model version optional, GenUI spec |
+| `adapted_renderer.py` | Resolves every target id before editing, safely applies every typed action, and reports skipped changes |
 | `standin_analyze_text.py` | A **stand-in** for the team's `analyze_text`, plain code |
 | `sample_data.py` | The two real TVO paragraphs and clearly-fake findings, used by tests and demos |
 | `log.py` | `enable_timing_logs()` |
@@ -158,7 +159,7 @@ A value typed in PowerShell beats the file. `.env` is in `.gitignore`; never com
 | `MODEL_BASE_URL` | OpenAI-style server address | `http://localhost:11434/v1` (Ollama) |
 | `MODEL_NAME` | Model to ask for (required in real mode) | none |
 | `MODEL_API_KEY` | Optional key, sent as `Authorization: Bearer ...`. Environment only | none |
-| `MODEL_TIMEOUT` | Seconds to wait for one reply | `120` |
+| `MODEL_TIMEOUT` | Seconds to wait for one reply. A local model on a CPU laptop took about 200 s for one call | `600` |
 | `MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`, sent as `reasoning_effort`. **Use `none` with Gemma 4 on Ollama** (it is a "thinking" model; otherwise each call can take 9+ minutes on a CPU laptop) | not sent |
 | `MODEL_MAX_RETRIES` | Extra attempts after an invalid reply (`2` means up to 3 calls) | `2` |
 
@@ -265,21 +266,49 @@ recs = generate_text_recommendations(blocks, findings)
 
 It is flagged `"STAND_IN": true` in its output. Replace it with the team's real `analyze_text` when that exists. Its readability grade is Flesch-Kincaid and its syllable, sentence and difficult-word detection are rough heuristics.
 
-## Call 3: `generate_adapted_ui` (placeholder GenUI spec)
+## Call 3: `generate_adapted_ui` (GenUI spec)
 
-> **The spec is a placeholder** (`adapted_ui_spec.py`): `{"changes": [{"block_id", "action": "replace_text|set_style", "value"}]}`. Swap the real schema in that file and in the two builders.
+The spec lives in `adapted_ui_spec.py`: `{"changes": [...]}`. Every change has a `block_id` and an `action`, and the `action` decides which other fields are allowed (a Pydantic discriminated union, so the JSON schema shows one shape per action).
 
 ```python
 result = generate_adapted_ui(text_recs, layout_recs, blocks)                 # plain code (recommended, default)
 result = generate_adapted_ui(text_recs, layout_recs, blocks, use_model=True) # model version
-result.spec      # the placeholder spec
+result.spec      # AdaptedUISpec
 result.skipped   # accepted recommendations that could not become a change, each with a reason
 ```
 
+**Supported actions** (a closed list; anything else fails validation):
+
+| action | fields | renderer does |
+|---|---|---|
+| `replace_text` | `value` | replaces the block's text, inserted as text (never HTML). Not for `page`. |
+| `set_style` | `value` | applies CSS declarations; only the safe properties in `ALLOWED_CSS_PROPERTIES`, no `url(`, `expression`, `var(` ... `page` is allowed. |
+| `text_to_list` | `list_type` (`bulleted`/`numbered`), `items` (2-20), `expected_original` | shows the block's content as a `ul`/`ol` of the items. |
+| `split_into_steps` | `steps` (2-20), `intro`?, `expected_original` | shows the block's content as numbered steps, with the optional intro line first. |
+| `add_button_label` | `label` (1-40 chars, one line), `placement` (`after_icon`/`below_icon`), `expected_original`? | adds a visible text label to an icon button; the icon, the button and its action stay the same. |
+| `group_menu_items` | `groups` (2+, each `label` and `item_ids`) | adds group headings inside the menu `block_id`. |
+| `set_link_text` | `text`, `expected_original` | replaces only an anchor's visible text; its `href` and other attributes stay unchanged. |
+| `set_button_label` | `label`, `expected_original` | replaces a button's visible label and sets the same `aria-label`; the button and its action stay unchanged. |
+| `set_alt_text` | `alt`, `expected_original` | replaces an image's `alt` attribute without changing `src` or other attributes. |
+| `add_section_heading` | `heading`, `level` (2-6), `expected_original` | inserts an `h2`-`h6` as the first child of a heading-less `section` or `article`. |
+
+- All text (`items`, `steps`, `intro`, `label`) is trimmed, must be non-empty, and must be plain text. Anything that looks like an HTML tag is rejected. The renderer must still insert it as text (`textContent`), never as `innerHTML`.
+- Structural actions need a real `block_id`, not `page`, and reject unknown keys. `replace_text` and `set_style` keep the original JSON shape and ignore extra keys, exactly as before.
+- **`expected_original`** is required for `text_to_list` and `split_into_steps`, because they rebuild the block. It remains optional for an icon-only button label. If the live text differs (ignoring whitespace), the renderer **skips** the change instead of applying it to stale content.
+- List/step validation also rejects a conversion that drops a number or likely proper name from `expected_original`. This is a conservative automated fact check, not a complete semantic proof; the UI still shows the original and proposed content for human approval.
+- **`group_menu_items` never moves or drops items.** All the groups' `item_ids` read in order must equal the menu's current item ids in document order. Otherwise the renderer skips the change. Each item may appear only once.
+- The renderer skips, and reports, any change whose `block_id` (or item id) it cannot find. One malformed change makes the whole spec invalid at validation time, so a spec that parses contains only well-formed changes.
+- The renderer resolves every id against the original DOM before applying anything. Ids such as `li-12` are document-order positions and can shift after structural changes.
+- At most one content/structural rebuild and one `set_style` may target a block. Compatible text feedback is merged into one `replace_text`; style feedback is merged into one `set_style`. Incompatible rebuilds are rejected instead of depending on application order.
+
+Fixed renderer output: `text_to_list` produces `<ul><li>...</li></ul>` or `<ol><li>...</li></ol>`; `split_into_steps` produces an optional plain-text `<p>` followed by `<ol><li>...</li></ol>`; `add_button_label` adds a text `<span>` after/below the icon and sets the button's accessible name; `group_menu_items` inserts group headings without reordering their referenced items. Because list/step strings are plain text, the renderer detects links or inline emphasis in the live block and skips that conversion, reporting the reason instead of silently dropping the markup.
+
+**Deliberately not supported:** raw HTML, arbitrary DOM operations (setting attributes, event handlers, `innerHTML`, inserting or creating arbitrary elements), deleting or hiding elements, moving or reordering elements, and scripts or external resources (CSS `url(...)`). Changes to links or button behaviour are also out. If a new need comes up, add a new named action with its own validated fields rather than a generic one.
+
 - Only `accepted` / `edited` recommendations are used; pending and denied are ignored. For `edited`, `suggestion` holds the user's own text.
-- `blocks` is needed because `replace_text` carries the whole new block text (one block can have several accepted edits). Question for the GenUI owner: would a phrase-level change (original + replacement) suit the renderer better?
-- `set_style` values are checked against a safe list of CSS properties; `replace_text` must be plain text. The renderer must insert it as text, never as HTML.
-- Structural suggestions such as "break into steps" are reported in `skipped`, because the placeholder spec cannot express them.
+- `blocks` is needed because `replace_text` carries the whole new block text (one block can have several accepted edits).
+- The plain builder maps accepted J5, J11, J12, J14 and S3 findings to `set_link_text`, `add_button_label`, `set_alt_text`, `set_button_label` and `add_section_heading`. Recommendations still carry no item arrays, so free-form "break into steps/list" suggestions remain skipped unless a caller supplies a typed `text_to_list` or `split_into_steps` change.
+- The optional model version of call 3 deliberately receives a trimmed schema containing only `replace_text` and `set_style`; the full `AdaptedUISpec` validation still runs on its output.
 
 **Recommendation: use the plain-code version.** Once the user has accepted a change, turning it into a spec is deterministic. Code gives the same answer every time, cannot reword what the user approved, needs no model call (no wait on a laptop, no cost), and is easy to test. The model version needs checks that force its output to equal the code's result, so it adds risk and delay and no value. A model would only help if the spec needed judgement, for example turning "break into steps" into real UI structure, and that depends on the real GenUI schema. Revisit then.
 
@@ -295,7 +324,7 @@ result.skipped   # accepted recommendations that could not become a change, each
 1. **The `analyze_text` findings shape** is my proposal. Nothing like it exists on the branch (the teammates' `analyze_html` is a rule-based dyslexia-CSS layer with no readability data).
 2. **The `layout_metrics` shape** is my proposal; the tool does not exist yet.
 3. **`standin_analyze_text`** is a stand-in with rough heuristics (sentence splitting on `. ! ?` before a capital; syllables estimated from vowel groups; "difficult" = 3+ syllables minus a small easy-word list; sentences over 20 words reported). Treat its numbers as approximate.
-4. **The GenUI spec** is the placeholder from the brief, isolated in `adapted_ui_spec.py`.
+4. **The GenUI spec** started as the brief's placeholder and now has a small closed list of structural actions (see Call 3). It is isolated in `adapted_ui_spec.py`.
 5. **The fake findings and fake layout metrics** in `sample_data.py` and the samples are made up (flagged `FAKE_SAMPLE_DATA`). The mock's numbers (24 words, line height 1.2) are fake too.
 
 **Design choices**
@@ -304,7 +333,7 @@ result.skipped   # accepted recommendations that could not become a change, each
 8. In **mock mode** the reply is fixed and ignores the input, so checks that compare against the input (known blocks, exact quoting, numbers, facts) are skipped; the schema, unique-id and `pending` checks still run. Real-model replies get all checks.
 9. Requests use `temperature: 0`. No streaming, and no JSON-mode or schema parameter is sent (the schema is in the prompt), so it works with any OpenAI-style server.
 10. Retries happen only when the reply is invalid. Network errors, bad settings and HTTP errors are not retried. Default is 2 retries (3 calls); each retry resends the whole conversation and, for call 2, the image.
-11. The default timeout is 120 seconds per call; the first call can be slower while Ollama loads the model.
+11. The default timeout is 600 seconds per call (it was 120, which a CPU-only local model exceeded); the first call can be slower while Ollama loads the model. A timeout is reported as "did not answer within N seconds", not as an unreachable server.
 12. **Number check:** only digits in the `rationale` are checked, against every number found anywhere in the findings (for call 2: the metrics, the guideline sentences and the applied values). Numbers written as words ("twenty-four") are not detected. `evidence` is not number-checked.
 13. **Meaning check** is a proxy: digits and mid-sentence capitalised words (names, places) in `original` must still appear in `suggestion`. A model can still change meaning in ways this cannot see. The prompt forbids it, and the UI shows both texts so a person accepts or denies each change.
 14. `original` must be a (whitespace-insensitive) quote from its block; otherwise the reply is rejected.

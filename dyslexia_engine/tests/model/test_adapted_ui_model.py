@@ -113,6 +113,14 @@ def test_missing_change_and_duplicate_change_are_rejected():
     assert "Missing set_style" in fake.calls[1][-1]["content"] and "More than one replace_text" in fake.calls[2][-1]["content"]
 
 
+def test_structural_change_the_model_was_not_asked_for_is_rejected():
+    spec = json.loads(GOOD)
+    spec["changes"].append({"block_id": "p-2", "action": "text_to_list", "list_type": "bulleted", "items": ["a", "b"]})
+    fake = FakeModel(json.dumps(spec), GOOD)
+    assert run(fake).spec == PLAIN.spec
+    assert "does not match any of the expected tags" in fake.calls[1][-1]["content"]
+
+
 def test_original_left_in_place_is_rejected():
     spec = json.loads(GOOD)
     spec["changes"][0]["value"] = SAMPLE_BLOCKS[0]["text"] + " " + TEXT[0].suggestion
@@ -132,3 +140,11 @@ def test_call_3_does_not_get_the_recommendation_rules():
     fake = FakeModel(GOOD)
     run(fake)
     assert 'status "pending"' not in fake.calls[0][0]["content"]
+
+
+def test_call_3_gets_only_its_two_action_schemas():
+    fake = FakeModel(GOOD)
+    run(fake)
+    system = fake.calls[0][0]["content"]
+    assert '"replace_text"' in system and '"set_style"' in system
+    assert 'text_to_list' not in system and 'split_into_steps' not in system and 'group_menu_items' not in system
