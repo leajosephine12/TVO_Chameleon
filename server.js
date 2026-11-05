@@ -94,8 +94,12 @@ app.get('/api/config', (req, res) => res.json({ allowedHosts: ALLOWED_HOSTS }));
 const CLIENT_DIST = path.join(__dirname, 'client', 'dist');
 app.use(express.static(CLIENT_DIST));
 
-app.listen(PORT, () => {
-    console.log('TVO capture running at http://localhost:' + PORT);
+// Only this computer can reach the server unless a password protects it or HOST says otherwise. The
+// /backend routes can run model calls, which cost money when a paid API key is set.
+const HOST = process.env.HOST || (process.env.APP_PASSWORD ? '0.0.0.0' : '127.0.0.1');
+
+app.listen(PORT, HOST, () => {
+    console.log(`TVO capture running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
     console.log('Allowed hosts: ' + ALLOWED_HOSTS.join(', '));
     if (!process.env.APP_PASSWORD) console.log('No APP_PASSWORD set: anyone who can reach this port can use it.');
 });
