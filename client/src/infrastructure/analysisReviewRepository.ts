@@ -80,7 +80,7 @@ export function createAnalysisReviewRepository(
       try {
         const { targetFrame, suggestions, modelError } = await analysePage(page);
         const note = modelError
-          ? `The language model could not be reached (${modelError}), so only the rule-based findings are shown.`
+          ? `The language model step failed (${modelError}), so only the rule-based findings are shown.`
           : '';
         return { ...base, targetFrame, versions: withAnalysis(blankVersions, suggestions, note) };
       } catch (error) {

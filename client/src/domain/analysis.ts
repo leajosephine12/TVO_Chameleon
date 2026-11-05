@@ -20,7 +20,7 @@ export interface Recommendation {
 
 export interface Analysis {
   recommendations: Recommendation[];
-  /** Set when the model could not be reached. The rule-based recommendations are still there. */
+  /** Set when the model step failed: it could not be reached, gave unusable output or is set up wrongly. The rule-based recommendations are still there. */
   modelError: string | null;
 }
 
