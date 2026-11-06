@@ -1,6 +1,48 @@
 # TVO_Chameleon
 Group 4 repo for FTL 2026
 
+## About the project
+
+TVO Chameleon is a cognitive accessibility tool for TVO content creators and designers. It analyzes
+selected webpage content (text, educational materials and layout) and finds gaps in cognitive
+accessibility, measured against age-appropriate standards for Grade 3–5 students, with an optional
+focus on students with dyslexia. It then gives recommendations to improve accessibility. A reviewer
+accepts, edits or rejects each one, and the tool produces adapted content with the accepted changes.
+
+![The TVO Chameleon review screen: the sample page on the left, with the heading under review outlined, and a suggestion with Approve and Reject buttons on the right](picture.png)
+
+### Purpose
+
+The goal is to help TVO find and remove barriers in its educational webpages for Grade 3–5 students,
+starting with dyslexia. The tool:
+
+- analyzes text, educational content and page layout
+- gives actionable, evidence-informed recommendations
+- with human approval, generates adapted content that is clearer and easier to use, while keeping the
+  curriculum learning objectives
+
+By building accessibility checks into the content design and review process, the project aims to help
+TVO make more inclusive resources, so more students can access, understand and benefit from its free,
+curriculum-aligned learning materials. The tool supports human judgment and does not replace it. It
+could later be extended to other cognitive and learning needs.
+
+## Quick start
+
+The fastest way to see the tool is the client on its own, using the built-in sample page
+(`client/public/sample-page.html`). It needs only Node.js 18 or newer, with no backend or capture server.
+
+```
+cd client
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The sample page opens first and comes with sample suggestions, so you can
+approve or reject them and see the page change. Your decisions are saved in the browser's
+`localStorage`.
+
+To analyze real TVO Learn pages, run the full app below.
+
 ## Running the app
 
 The capture server (`server.js`) pulls a TVO Learn page into a static copy, and the client (`client/`)
