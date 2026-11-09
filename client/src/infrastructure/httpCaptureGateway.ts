@@ -8,15 +8,18 @@ interface CaptureMeta {
   sourceUrl: string;
   title: string;
   capturedAt: string;
+  /** The saved lesson of a learning activity page, such as "frames/f0.html". Null for other pages. */
+  lessonFrame: string | null;
 }
 
+/** A learning activity is reviewed as the lesson alone, without the TVO site around it. */
 function toCapture(meta: CaptureMeta): PageCapture {
   return {
     id: meta.id,
     sourceUrl: meta.sourceUrl,
     title: meta.title,
     capturedAt: meta.capturedAt,
-    pageUrl: `/snapshots/${meta.id}/index.html`,
+    pageUrl: `/snapshots/${meta.id}/${meta.lessonFrame ?? 'index.html'}`,
   };
 }
 
