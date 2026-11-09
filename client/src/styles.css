@@ -89,17 +89,6 @@ p {
   background: radial-gradient(circle, var(--ink) 0 5px, transparent 6px);
 }
 
-.pill {
-  padding: 2px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--chrome);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
 .view-as {
   display: flex;
   align-items: center;
@@ -177,18 +166,6 @@ p {
   padding: 10px 12px;
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
-}
-
-.dots {
-  display: flex;
-  gap: 6px;
-}
-
-.dots i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--line);
 }
 
 .address {
