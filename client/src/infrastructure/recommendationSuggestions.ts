@@ -25,6 +25,42 @@ const TAGS_FOR_TYPE: Record<string, string[]> = {
   underline_text: ['u'],
 };
 
+/** Plain names for the HTML tags a suggestion can point at, so reviewers never see "p" or "li". */
+const ELEMENT_NAMES: Record<string, string> = {
+  p: 'Paragraph',
+  h1: 'Heading',
+  h2: 'Heading',
+  h3: 'Subheading',
+  h4: 'Subheading',
+  h5: 'Subheading',
+  h6: 'Subheading',
+  li: 'List item',
+  ul: 'List',
+  ol: 'List',
+  a: 'Link',
+  button: 'Button',
+  span: 'Text',
+  div: 'Section',
+  td: 'Table cell',
+  th: 'Table heading',
+  label: 'Form label',
+  blockquote: 'Quote',
+  figcaption: 'Image caption',
+  i: 'Italic text',
+  em: 'Italic text',
+  cite: 'Italic text',
+  dfn: 'Italic text',
+  u: 'Underlined text',
+  strong: 'Bold text',
+  b: 'Bold text',
+};
+
+/** A block id looks like "p-3": its tag, then its position in the page. Falls back to a neutral name. */
+export function describeElement(tagOrBlockId: string): string {
+  const tag = tagOrBlockId.split('-')[0].toLowerCase();
+  return ELEMENT_NAMES[tag] ?? 'Text on the page';
+}
+
 const isCssDeclaration = (text: string) => /^[a-z-]+\s*:/i.test(text);
 
 /** Icon fonts use <i> tags, so the backend reports them as italics. There is no text in them to restyle. */
@@ -95,8 +131,9 @@ function toSuggestion(rec: Recommendation, patch: Patch, block: PageBlock | unde
   const isPageWide = PAGE_WIDE_TYPES.includes(rec.type);
   return {
     id: rec.id,
-    title: TITLES[rec.type] ?? rec.type,
-    location: isPageWide ? 'Whole page' : (block?.tag ?? rec.block_id),
+    // A type with no title yet gets a neutral one rather than its internal code, such as "J5".
+    title: TITLES[rec.type] ?? 'Suggested change',
+    location: isPageWide ? 'Whole page' : describeElement(block?.tag ?? rec.block_id),
     summary: rec.rationale,
     category: 'reading',
     priority: rec.severity as Priority,
