@@ -55,6 +55,7 @@ p {
 
 .app {
   height: 100vh;
+  height: 100dvh; /* excludes mobile browser toolbars; the line above is the fallback */
   display: flex;
   flex-direction: column;
 }
@@ -137,7 +138,8 @@ p {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 450px;
+  /* The panel shrinks on mid-size screens (small laptops, iPad landscape) so the page keeps room. */
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 34vw, 450px);
   gap: 12px;
   padding: 0 12px 12px;
 }
@@ -661,10 +663,11 @@ h3.eyebrow {
 }
 
 /* Narrow screens: stack the page and the panel, and scroll as one. */
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .app {
     height: auto;
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .workspace {
@@ -674,6 +677,7 @@ h3.eyebrow {
   .preview iframe {
     flex: none;
     height: 70vh;
+    height: 70dvh;
   }
 
   .review-scroll {

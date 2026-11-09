@@ -27,6 +27,9 @@ export function PagePreview({ url, addressLabel, patches, targetFrame, highlight
     return () => document.removeEventListener('fullscreenchange', syncFullScreenState);
   }, []);
 
+  // iPhone Safari has no full screen for page elements, so the button is left out there.
+  const canFullScreen = document.fullscreenEnabled === true;
+
   const toggleFullScreen = () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
@@ -71,9 +74,11 @@ export function PagePreview({ url, addressLabel, patches, targetFrame, highlight
       <div className="preview-bar">
         <span className="address">{addressLabel}</span>
         {controls}
-        <button type="button" className="fullscreen-button" onClick={toggleFullScreen}>
-          {isFullScreen ? 'Exit full screen' : 'Full screen'}
-        </button>
+        {canFullScreen && (
+          <button type="button" className="fullscreen-button" onClick={toggleFullScreen}>
+            {isFullScreen ? 'Exit full screen' : 'Full screen'}
+          </button>
+        )}
       </div>
       <iframe
         title={addressLabel}
