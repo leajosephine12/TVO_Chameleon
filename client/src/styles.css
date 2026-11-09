@@ -376,14 +376,10 @@ p {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin: 4px 0 10px;
   padding: 14px 16px;
   border: 2px solid var(--accent);
   border-radius: 10px;
-}
-
-.suggestion-detail h2 {
-  font-size: 20px;
-  line-height: 1.25;
 }
 
 .suggestion-detail > p:not(.eyebrow) {
