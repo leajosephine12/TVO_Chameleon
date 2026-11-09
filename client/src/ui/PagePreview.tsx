@@ -62,7 +62,7 @@ export function PagePreview({ url, addressLabel, patches, targetFrame, highlight
 
   useEffect(() => {
     if (targetDoc && highlightSelector) {
-      targetDoc.querySelector(highlightSelector)?.scrollIntoView({ block: 'center' });
+      targetDoc.querySelector('[data-chameleon-highlight]')?.scrollIntoView({ block: 'center' });
     }
   }, [targetDoc, highlightSelector]);
 
