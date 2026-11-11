@@ -1,61 +1,122 @@
-# Dyslexia backend (Level 1)
+# Architecture: dyslexia_engine
 
-Takes education HTML extracted from an iframe, recommends dyslexia-friendly changes, and applies only the ones the user accepts.
+`dyslexia_engine` is a standalone service (port 8001) that adapts a page for readers
+with dyslexia. It is called over HTTP by `backend/main.py` (the gateway), which also
+calls other engines such as `general_accessibility_engine`. This service knows nothing
+about those engines or about the frontend.
 
-## Pipeline
+Rules in code decide what is wrong, the model rewrites text (level 2 only), the human
+decides, and code applies. Every recommendation carries its citation.
 
-```
-Frontend (iframe HTML)
-   -> Backend / AI model (FastMCP Client)
-      -> FastMCP server   app/main.py          tools: get_guidelines, analyze_html, apply_recommendations
-         -> Python engine app/adaptation_engine.py
-            -> rules      app/guidelines.py     research values, single source of truth
-```
+```mermaid
+flowchart TD
+    GW["backend/main.py (gateway)<br/>merges engines, owns CORS / auth / routing"]
 
-The MCP tools take JSON in and return JSON out, with no model inside. The engine is plain Python, so it can be called directly too.
+    subgraph DYS["dyslexia_engine/app (FastAPI, :8001)"]
+        API["main.py<br/>POST /analyze · POST /adapted"]
+        ENG["adaptation_engine.py<br/>analyze(level) · apply(level)"]
 
-## Flow (matches the team contract)
+        subgraph L1["Level 1: representation (code only)"]
+            A1["levels/level1_representation.py<br/>analyze_level1 · apply_level1"]
+            G1["guidelines/level1_representation.py<br/>values + sources (source of truth)<br/>evidence_for(ids)"]
+        end
 
-1. `analyze_html(html)` returns `Recommendation` objects, all `status: "pending"`.
-2. The UI shows them. The backend records accept / deny / edit by changing `status`.
-3. `apply_recommendations(html, recommendations)` applies only `accepted` and `edited` ones.
+        subgraph L2["Level 2: plain text (model)"]
+            A2["levels/level2_plain_text.py<br/>analyze_level2 · apply_level2"]
+            G2["guidelines/level2_plain_text.py"]
+            P2["model/per_level_prompts/<br/>level2_plain_text.py (builds the prompt)"]
+            RUN["model/runner.py + guards.py<br/>validate model output"]
+            CL["model/client.py<br/>OpenAI-format POST"]
+        end
+    end
 
-## Recommendation format
+    MODEL["Model endpoint (env vars only)<br/>Claude · Ollama/Gemma · MODEL_MOCK=1"]
 
-```json
-{
-  "id": "r1", "block_id": "em-1", "type": "italic_text",
-  "original": "<em>by which</em>", "suggestion": "<strong>by which</strong>",
-  "rationale": "...", "evidence": "Level 1 guideline L1.1.7",
-  "severity": "low", "status": "pending"
-}
-```
-
-- `block_id` is `<tag>-<n>`, the n-th tag in document order (like `p-4`). Page-wide rules use `page`.
-- Always send the same HTML to `analyze_html` and `apply_recommendations`.
-- Element types: `italic_text`, `underline_text`, `inline_style`. Page-wide types: `typography`, `spacing`, `color`, `layout`, `emphasis`.
-- For `edited` element recommendations, put the user's replacement HTML (or style string) in `suggestion`.
-
-## Run
-
-```bash
-pip install -r requirements.txt
-python demo_client.py                              # in-memory demo
-python -m app.main --http                          # serve at http://127.0.0.1:8000/mcp
-python demo_client.py http://127.0.0.1:8000/mcp    # demo against the running server
-python -m app.main                                 # stdio, for MCP clients
+    GW -->|"HTTP: level + html or blocks"| API
+    API --> ENG
+    ENG -->|level 1| A1
+    ENG -->|level 2| A2
+    A1 --> G1
+    A2 --> G2
+    A2 --> P2 --> RUN --> CL -->|"POST /chat/completions"| MODEL
 ```
 
-Open `demo/sample_iframe.html` and `demo/sample_adapted.html` side by side. The demo denies the layout rule, so the adapted page keeps its two columns.
+## Flow
 
-## To agree with the other backend person
+1. The gateway sends `POST /analyze {level, html | blocks, enabled_rules?, max_recommendations?}`.
+2. `adaptation_engine.analyze(level, ...)` routes by `level`:
+   - **Level 1** takes an HTML string and runs `analyze_level1`. One recommendation per
+     offending element (italics, underline, inline styles) plus one per page-wide rule
+     group (typography, spacing, color, layout, emphasis). No model call.
+   - **Level 2** takes text blocks `[{"block_id", "text"}]` and runs `analyze_level2`.
+     It builds the prompt from `per_level_prompts/`, calls the model through
+     `runner.py`, and guards check the output before it is returned.
+3. The result is an `AnalyzeResult {level, recommendations, findings}`. Every
+   recommendation is `pending`. Nothing has been changed yet.
+4. The user accepts, denies or edits each one. **State lives in the frontend and the
+   gateway**; this service is stateless.
+5. The gateway sends `POST /adapted {level, html | blocks, recommendations}`. `main.py`
+   keeps only `accepted` and `edited`, then `adaptation_engine.apply(level, ...)` routes:
+   - **Level 1:** `apply_level1` edits elements and injects one `<style data-dyslexia-adapt>`
+     with only the accepted page-wide sections. Returns `AdaptResult`.
+   - **Level 2:** `apply_level2` applies the accepted text rewrites. Returns `Level2ApplyResult`.
+6. Send the **same** `html` / `blocks` to both calls. Block ids (`p-4`) resolve against it.
 
-- Tool names. Mine are `get_guidelines`, `analyze_html`, `apply_recommendations`. Is this a second MCP server or are they added to theirs?
-- Their tools take a `url`, mine take HTML. Confirm which one they want.
-- The REST endpoints (`/analyze`, `/decision`, `/adapted`) belong to the general backend, not this service.
+## Level mapping
 
-## Assumptions to confirm
+| Level | Input | Method | Model? | Entry points |
+|---|---|---|---|---|
+| 1 Representation | `html` | Deterministic CSS and element edits | No | `analyze_level1`, `apply_level1` |
+| 2 Plain text | `blocks` | Model rewrites, validated by guards | Yes | `analyze_level2`, `apply_level2` |
+| 3+ | n/a | Not implemented (`SUPPORTED_LEVELS = (1, 2)`) | n/a | n/a |
 
-- Average letter width is 0.5em, so letter spacing is 0.175em and word spacing 0.613em.
-- Links are bold and coloured but not underlined. This can conflict with WCAG 1.4.1.
-- Page-wide recommendations are always offered (computed browser styles are not available from raw HTML), and rated high severity only when the page's own CSS shows the problem.
+## Contracts
+
+- `Recommendation` (`app/schemas.py`) is the one shared object between this engine, the
+  model layer and the gateway.
+- **Evidence comes from the guideline's own `source` field.** Level 1 builds it with
+  `evidence_for("L1.1.7")`, which looks the id up in `guidelines/level1_representation.py`
+  and returns e.g. `L1.1.7: Scope. (2023) ...`. Nothing is hard-coded in the analyzer.
+  Add a guideline once and its citation follows everywhere.
+- Level 1 numbers (font size, spacing, colors, line length) live only in
+  `guidelines/level1_representation.py`.
+- Model choice is environment only: `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY`,
+  `MODEL_TEMPERATURE`, or `MODEL_MOCK=1`. Loaded from `dyslexia_engine/.env`.
+- Errors: `422` bad request (unsupported level, missing `html` / `blocks`),
+  `502` model unavailable (level 2).
+
+## Folder structure
+
+```
+dyslexia_engine/app/
+├── main.py                 # HTTP wrapper (FastAPI); called by backend/main.py
+├── schemas.py              # shared Recommendation / AnalyzeResult / AdaptResult
+├── adaptation_engine.py    # thin orchestrator: analyze(level), apply(level)
+├── guidelines/
+│   ├── __init__.py         # get_guidelines(level=None)
+│   ├── level1_representation.py   # values, sources, PAGE_RULES, evidence_for
+│   └── level2_plain_text.py
+├── levels/
+│   ├── level1_representation.py   # analyze_level1, apply_level1
+│   └── level2_plain_text.py       # analyze_level2, apply_level2
+└── model/                  # model layer (shared plumbing + per-level prompts)
+    ├── per_level_prompts/level2_plain_text.py   # builds the level 2 prompt
+    ├── client.py, config.py, log.py, guards.py, runner.py
+    ├── analyze_level2.py
+    └── schemas.py, sample_data.py, standin_analyze_text.py
+```
+
+## Out of scope here (handled by the gateway or other engines)
+
+- Calling and merging `general_accessibility_engine`.
+- Rendering a URL with Playwright, screenshots, axe, layout metrics.
+- CORS, auth, and combining adapted HTML from several engines.
+
+## Known gaps
+
+- Level 1 checks only the page's own CSS, not computed browser styles.
+- Level 1 element ids (`<tag>-<n>`) shift after `<i>/<em>/<u>` are rewritten, so always
+  apply against the HTML that was analyzed.
+- Levels beyond 2 are not implemented.
+- The old FastMCP server (`get_guidelines`, `analyze_html`, `apply_recommendations`) is
+  no longer in `app/main.py`. Move it to its own file if MCP clients are still needed.
