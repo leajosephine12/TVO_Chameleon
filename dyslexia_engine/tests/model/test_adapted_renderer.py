@@ -1,8 +1,8 @@
 
 from bs4 import BeautifulSoup
 
-from app.model.adapted_renderer import apply_adapted_spec
-from app.model.adapted_ui_spec import AdaptedUISpec
+from app.model.level3_future.adapted_renderer import apply_adapted_spec
+from app.model.level3_future.adapted_ui_spec import AdaptedUISpec
 
 
 def render(html, *changes):
@@ -71,7 +71,7 @@ def test_menu_grouping_preserves_item_order():
 
 import pytest  # noqa: E402
 
-from app.model.adapted_renderer import block_text, visible_text  # noqa: E402
+from app.model.level3_future.adapted_renderer import block_text, visible_text  # noqa: E402
 
 
 def tag_of(html, name="p"):

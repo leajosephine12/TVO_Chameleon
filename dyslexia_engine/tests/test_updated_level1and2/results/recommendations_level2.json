@@ -1,0 +1,156 @@
+{
+  "level2": {
+    "findings": {
+      "STAND_IN": true,
+      "targets": {
+        "grade_level": "3-5",
+        "max_sentence_words": "15-20"
+      },
+      "rules_checked": [
+        "L2.1.1",
+        "L2.1.2",
+        "L2.1.3",
+        "L2.1.4",
+        "L2.1.5",
+        "L2.1.6",
+        "L2.1.7"
+      ],
+      "blocks": [
+        {
+          "block_id": "p-1",
+          "word_count": 16,
+          "reading_grade": 15.7,
+          "long_sentences": [],
+          "difficult_words": [
+            "photosynthesis",
+            "facilitate",
+            "conversion",
+            "utilised",
+            "chemical"
+          ],
+          "short_word_candidates": [],
+          "passive_sentence_count": 1,
+          "passive_sentences": [
+            "Photosynthesis is utilised by plants in order to facilitate the conversion of sunlight into chemical energy."
+          ],
+          "complex_phrases": [],
+          "all_caps_words": [],
+          "silent_letter_words": [],
+          "disruptive_punctuation_count": 0
+        },
+        {
+          "block_id": "p-2",
+          "word_count": 18,
+          "reading_grade": 7.2,
+          "long_sentences": [],
+          "difficult_words": [
+            "additional",
+            "transported"
+          ],
+          "short_word_candidates": [
+            {
+              "term": "additional",
+              "simpler": "more",
+              "count": 1
+            }
+          ],
+          "passive_sentence_count": 1,
+          "passive_sentences": [
+            "The glucose is then transported - via the phloem - to additional parts of the plant, where it is stored."
+          ],
+          "complex_phrases": [],
+          "all_caps_words": [],
+          "silent_letter_words": [],
+          "disruptive_punctuation_count": 2
+        },
+        {
+          "block_id": "p-3",
+          "word_count": 17,
+          "reading_grade": 7.7,
+          "long_sentences": [],
+          "difficult_words": [
+            "laissez-faire",
+            "watering"
+          ],
+          "short_word_candidates": [],
+          "passive_sentence_count": 1,
+          "passive_sentences": [
+            "Farmers who take a laissez-faire approach to watering may find that their crops are DAMAGED by drought."
+          ],
+          "complex_phrases": [
+            {
+              "term": "a laissez-faire approach",
+              "simpler": "a hands-off approach",
+              "count": 1
+            }
+          ],
+          "all_caps_words": [
+            "DAMAGED"
+          ],
+          "silent_letter_words": [],
+          "disruptive_punctuation_count": 0
+        },
+        {
+          "block_id": "p-4",
+          "word_count": 14,
+          "reading_grade": 1.4,
+          "long_sentences": [],
+          "difficult_words": [],
+          "short_word_candidates": [],
+          "passive_sentence_count": 0,
+          "passive_sentences": [],
+          "complex_phrases": [],
+          "all_caps_words": [],
+          "silent_letter_words": [],
+          "disruptive_punctuation_count": 0
+        }
+      ]
+    },
+    "recommendations": [
+      {
+        "id": "r1",
+        "block_id": "p-1",
+        "type": "long_sentence",
+        "original": "Photosynthesis is utilised by plants in order to facilitate the conversion of sunlight into chemical energy.",
+        "suggestion": "Plants use photosynthesis to turn sunlight into chemical energy.",
+        "rationale": "16 words; Grade 3-5 target <= 15-20",
+        "evidence": "L2.1.3 / Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/",
+        "severity": "medium",
+        "status": "pending"
+      },
+      {
+        "id": "r2",
+        "block_id": "p-1",
+        "type": "difficult_word",
+        "original": "Photosynthesis is utilised by plants in order to facilitate the conversion of sunlight into chemical energy.",
+        "suggestion": "Photosynthesis is used by plants to help turn sunlight into chemical energy.",
+        "rationale": "Difficult words like 'utilised' and 'facilitate' need simpler words.",
+        "evidence": "L2.1.2, L2.1.1 / Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/",
+        "severity": "high",
+        "status": "pending"
+      },
+      {
+        "id": "r3",
+        "block_id": "p-2",
+        "type": "long_sentence",
+        "original": "The glucose is then transported - via the phloem - to additional parts of the plant, where it is stored.",
+        "suggestion": "The phloem then moves the glucose to more parts of the plant, where it is stored.",
+        "rationale": "18 words; Grade 3-5 target <= 15-20",
+        "evidence": "L2.1.3 / Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/",
+        "severity": "medium",
+        "status": "pending"
+      },
+      {
+        "id": "r4",
+        "block_id": "p-3",
+        "type": "difficult_word",
+        "original": "Farmers who take a laissez-faire approach to watering may find that their crops are DAMAGED by drought.",
+        "suggestion": "Farmers who take a hands-off approach to watering may find that drought can damage their crops.",
+        "rationale": "Difficult words like 'laissez-faire' and 'DAMAGED' need simpler words.",
+        "evidence": "L2.1.1, L2.1.2 / Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/",
+        "severity": "high",
+        "status": "pending"
+      }
+    ]
+  }
+}

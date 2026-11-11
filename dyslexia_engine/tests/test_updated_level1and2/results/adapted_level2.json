@@ -1,0 +1,27 @@
+{
+  "level": 2,
+  "blocks": [
+    {
+      "block_id": "p-1",
+      "text": "Plants use photosynthesis to turn sunlight into chemical energy."
+    },
+    {
+      "block_id": "p-2",
+      "text": "The phloem then carries the glucose to more parts of the plant, where it is stored."
+    },
+    {
+      "block_id": "p-3",
+      "text": "Farmers who take a hands-off approach to watering may find that drought damages their crops."
+    },
+    {
+      "block_id": "p-4",
+      "text": "Plants need light. Plants need water. Plants also need carbon dioxide from the air."
+    }
+  ],
+  "applied": [
+    "r1",
+    "r2",
+    "r3"
+  ],
+  "skipped": []
+}

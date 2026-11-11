@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.model.adapted_ui import generate_adapted_ui
-from app.model.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
+from app.model.level3_future.adapted_ui import generate_adapted_ui
+from app.model.level3_future.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
 from app.model.mock import mock_response
 from app.model.sample_data import SAMPLE_BLOCKS
 from app.model.schemas import Recommendation

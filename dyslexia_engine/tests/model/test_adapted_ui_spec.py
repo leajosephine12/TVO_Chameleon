@@ -4,7 +4,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.model.adapted_ui_spec import (
+from app.model.level3_future.adapted_ui_spec import (
     AddButtonLabel, AddSectionHeading, AdaptedUISpec, GroupMenuItems, ReplaceText,
     SetAltText, SetButtonLabel, SetLinkText, SetStyle, SplitIntoSteps, TextToList,
 )
@@ -214,7 +214,7 @@ def test_one_bad_change_rejects_the_whole_spec():
 
 # ---- a lone '<' in prose is text, a real tag is not ----
 
-from app.model.adapted_ui_spec import ReplaceText, TextToList  # noqa: E402
+from app.model.level3_future.adapted_ui_spec import ReplaceText, TextToList  # noqa: E402
 
 
 @pytest.mark.parametrize("text", ["Keep it if 5 <x litres.", "Is x < y and y > z?", "Use <3 as a heart.", "a<b", "Cost: 5 < 10"])

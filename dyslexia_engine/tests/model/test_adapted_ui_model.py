@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.model.adapted_ui import generate_adapted_ui
+from app.model.level3_future.adapted_ui import generate_adapted_ui
 from app.model.mock import mock_response
 from app.model.runner import ModelOutputError
 from app.model.sample_data import SAMPLE_BLOCKS

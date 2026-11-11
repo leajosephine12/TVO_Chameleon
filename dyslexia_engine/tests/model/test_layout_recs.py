@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import guidelines
-from app.model.layout_recs import generate_layout_recommendations, layout_targets, screenshot_to_data_url
+from app.model.level3_future.layout_recs import generate_layout_recommendations, layout_targets, screenshot_to_data_url
 from app.model.mock import mock_response
 from app.model.runner import ModelOutputError
 from app.model.sample_data import FAKE_LAYOUT_METRICS, TINY_PNG
@@ -180,7 +180,7 @@ def test_prompt_says_to_flag_only_measurements_outside_the_guideline_range():
 
 # ---- range guard: a measurement already inside the guideline range gets no suggestion ----
 
-from app.model.layout_recs import drop_in_range, layout_ranges  # noqa: E402
+from app.model.level3_future.layout_recs import drop_in_range, layout_ranges  # noqa: E402
 
 
 def drop(recs, metrics):
@@ -201,7 +201,7 @@ def test_ranges_are_read_from_the_guideline_sentences():
 
 
 def test_unreadable_guideline_wording_fails_loudly(monkeypatch):
-    from app.model import layout_recs
+    from app.model.level3_future import layout_recs
     changed = [g.model_copy(update={"rule": "Use a bigger font."}) if g.id == "L1.1.2" else g for g in layout_recs.LEVEL1_GUIDELINES]
     monkeypatch.setattr(layout_recs, "LEVEL1_GUIDELINES", changed)
     with pytest.raises(RuntimeError, match="min_font_size_px"):

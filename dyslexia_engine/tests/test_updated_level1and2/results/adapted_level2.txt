@@ -1,0 +1,15 @@
+[p-1]
+  BEFORE: Photosynthesis is utilised by plants in order to facilitate the conversion of sunlight into chemical energy.
+  AFTER : Plants use photosynthesis to turn sunlight into chemical energy.
+
+[p-2]
+  BEFORE: The glucose is then transported - via the phloem - to additional parts of the plant, where it is stored.
+  AFTER : The phloem then carries the glucose to more parts of the plant, where it is stored.
+
+[p-3]
+  BEFORE: Farmers who take a laissez-faire approach to watering may find that their crops are DAMAGED by drought.
+  AFTER : Farmers who take a hands-off approach to watering may find that drought damages their crops.
+
+[p-4]
+  BEFORE: Plants need light. Plants need water. Plants also need carbon dioxide from the air.
+  AFTER : Plants need light. Plants need water. Plants also need carbon dioxide from the air.
