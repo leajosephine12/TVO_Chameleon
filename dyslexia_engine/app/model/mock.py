@@ -1,4 +1,6 @@
-"""Mock model: returns fixed, valid JSON so the UI and backend can be built without a model.
+"""
+dyslexia_engine/model/mock.py
+Mock model: returns fixed, valid JSON so the UI and backend can be built without a model.
 
 The recommendations match the sample TVO blocks (p-1, p-2) in the tests/samples. All numbers
 are FAKE sample data, not from a real analysis.

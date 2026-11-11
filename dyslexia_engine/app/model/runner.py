@@ -1,4 +1,7 @@
-"""Shared loop for every model call: ask, parse, validate, retry with the error fed back.
+"""
+dyslexia_engine/model/runner.py
+- orchestrator
+Shared loop for every model call: ask, parse, validate, retry with the error fed back.
 
 If the model still fails after the retries, ModelOutputError is raised. Invalid data is never returned.
 """

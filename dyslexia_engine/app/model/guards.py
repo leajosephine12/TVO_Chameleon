@@ -1,4 +1,6 @@
-"""Safety checks on model output, plus helpers for handling untrusted page text.
+"""
+dyslexia_engine/model/guards.py
+Safety checks on model output, plus helpers for handling untrusted page text.
 
 Each `check_*` takes a list of Recommendation and returns a list of problem strings
 (empty list = fine). The runner feeds these problems back to the model on a retry.
@@ -14,6 +16,12 @@ from .schemas import Recommendation
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SENTENCE_START = re.compile(r"(?:^|[.!?]\s+)")
+
+# ---------- limits ----------
+MAX_ITEMS = 20
+MAX_CHANGES = 100
+MAX_ITEM_CHARS = 500
+MAX_LABEL_CHARS = 40
 
 
 # ---------- untrusted page text ----------
@@ -115,12 +123,17 @@ def check_original_is_quoted(recs: list[Recommendation], block_text: dict[str, s
 # ---------- meaning ----------
 
 def _mid_sentence_capitals(text: str) -> set[str]:
-    """Capitalised words that are not just the first word of a sentence (names, places)."""
+    """Capitalised words that are not just the first word of a sentence (names, places).
+
+    ALL-CAPS words are skipped: they are emphasis (the all-caps rule rewrites them), not names.
+    """
     starts = {m.end() for m in _SENTENCE_START.finditer(text)}
     return {
         m.group()
         for m in re.finditer(r"[A-Z][a-zA-Z'-]*", text)
-        if m.start() not in starts and not (m.start() > 0 and text[m.start() - 1].isalnum())
+        if m.start() not in starts
+        and not (m.start() > 0 and text[m.start() - 1].isalnum())
+        and not (len(m.group()) > 1 and m.group().isupper())
     }
 
 
@@ -177,7 +190,6 @@ def check_structural_fields(recs: list[Recommendation]) -> list[str]:
 
     Without this a card appears, the user accepts it, and only then does the spec reject a 58-character heading.
     """
-    from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS  # imported here: adapted_ui_spec imports this module
 
     problems = []
     for r in recs:

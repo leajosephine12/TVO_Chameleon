@@ -1,4 +1,6 @@
-"""Prompt pieces shared by every model call. Call-specific wording lives next to each call."""
+"""
+dyslexia_engine/model/prompts.py
+Prompt pieces shared by every model call. Call-specific wording lives next to each call."""
 import json
 
 from pydantic import BaseModel
