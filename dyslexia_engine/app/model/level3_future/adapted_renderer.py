@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from ..adaptation_engine import _index_blocks
+from ...adaptation_engine import _index_blocks
 from .adapted_ui_spec import AdaptedUISpec
 
 _RICH_INLINE = {"a", "b", "strong", "i", "em", "u", "code", "mark", "abbr", "span", "svg"}

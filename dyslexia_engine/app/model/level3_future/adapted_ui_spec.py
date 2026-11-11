@@ -27,7 +27,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from .guards import lost_facts
+from ..guards import lost_facts
 
 ALLOWED_CSS_PROPERTIES = frozenset({
     "font-size", "font-family", "font-weight", "font-style", "line-height", "letter-spacing", "word-spacing",

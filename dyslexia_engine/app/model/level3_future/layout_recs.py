@@ -11,14 +11,14 @@ import logging
 import re
 from functools import partial
 
-from ..guidelines import BODY_FONT_PX, HEADING_SCALE, LEVEL1_GUIDELINES, LINE_HEIGHT, MAX_LINE_CH
-from .client import call_model
-from .config import ModelConfig
+from ...guidelines import BODY_FONT_PX, HEADING_SCALE, LEVEL1_GUIDELINES, LINE_HEIGHT, MAX_LINE_CH
+from ..client import call_model
+from ..config import ModelConfig
 from .adapted_ui_spec import parse_css
-from .guards import check_judgement_evidence, check_known_blocks, check_rationale_numbers, check_status_pending
-from .prompts import attach_image, build_messages, judgement_section
-from .runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
-from .schemas import Recommendation, RecommendationList
+from ..guards import check_judgement_evidence, check_known_blocks, check_rationale_numbers, check_status_pending
+from ..prompts import attach_image, build_messages, judgement_section
+from ..runner import DEFAULT_MAX_RECOMMENDATIONS, cap_by_severity, renumber, run_recommendation_task
+from ..schemas import Recommendation, RecommendationList
 
 log = logging.getLogger("app.model")
 TASK = "layout_recs"
