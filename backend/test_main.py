@@ -123,3 +123,49 @@ def test_a_too_long_heading_is_skipped_and_the_other_accepted_edit_still_applies
 def test_a_button_fix_with_no_original_is_reported_not_a_server_error():
     out = adapt([model_rec("r1", "input-1", "J14", "", "Submit answers")])
     assert out["applied"] == [] and out["skipped"] == ["r1"]
+
+
+def test_general_accessibility_has_its_own_endpoints_and_rules_only_keeps_the_model_out_of_analyze():
+    html = "<html><body><p>" + " ".join(["The plant grows in the sun, and it needs water every day"] * 3) + ".</p></body></html>"
+    general = client.post("/analyze_general", json={"html": html}).json()
+    recs = general["recommendations"]
+    assert recs and all(r["change"] and (r["preview_html"] or r["preview_css"]) and r["title"] for r in recs)
+
+    for r in recs:
+        r["status"] = "accepted"
+    out = client.post("/adapted_general", json={"html": html, "recommendations": recs}).json()
+    assert out["applied"] == [r["id"] for r in recs] and out["adapted_html"] != html
+
+    rules = client.post("/analyze", json={"html": HTML, "rules_only": True}).json()["recommendations"]
+    assert rules and all(r["evidence"].startswith("Level 1 guideline") for r in rules)
+
+
+def test_layout_fixes_are_computed_in_code_and_ship_even_when_the_model_step_fails(monkeypatch):
+    """Text size, line spacing and line length need no model: one card per block, applied as one style change."""
+    import genui.service as service
+    from app.model.client import ModelCallError
+    from genui import analyze_general, apply_general
+
+    def no_model(*args, **kwargs):
+        raise ModelCallError("model is down")
+
+    monkeypatch.setattr(service, "plan_changes", no_model)
+    html = "<html><body><p>Small and cramped text.</p><p>Fine text.</p></body></html>"
+    measured = lambda metric, m, detail: {"metric_id": metric, "block_id": "p-1", "measured": m, "detail": detail,  # noqa: E731
+                                          "threshold": "t", "source": "s", "tier": "C"}
+    rendered = {"findings": [measured("L3", {"font_size_px": 12.0}, "Body text is 12px."),
+                             measured("L2", {"line_height": 1.2, "text_align": "justify"}, "Line height 1.2, justified text")]}
+    out = analyze_general(html, None, rendered)
+    assert out["model_error"] == "model is down"
+    [rec] = out["recommendations"]
+    assert rec.type == "L2+L3" and rec.preview_css == "line-height: 1.5; text-align: left; font-size: 16px"
+
+    rec.status = "accepted"
+    applied = apply_general(html, [rec])
+    assert applied["applied"] == [rec.id] and "font-size: 16px" in applied["adapted_html"]
+
+
+def test_general_analysis_still_runs_when_the_page_cannot_be_rendered():
+    html = "<html><body><p>Short text.</p></body></html>"
+    r = client.post("/analyze_general", json={"html": html, "url": "http://127.0.0.1:9/nothing-here", "render": True})
+    assert r.status_code == 200 and r.json()["layout_error"]
