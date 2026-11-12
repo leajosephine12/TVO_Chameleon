@@ -40,6 +40,7 @@ from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
 from app.model.layout_recs import generate_layout_recommendations
+from app.model.log import enable_timing_logs
 from app.model.runner import ModelOutputError
 from app.model.text_recs import generate_text_recommendations
 from app.schemas import Recommendation
@@ -47,6 +48,7 @@ from app.schemas import Recommendation
 from genui import A11yRecommendation, analyze_general, apply_general
 
 load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
+enable_timing_logs()  # one line per model call in the terminal: which model, how long, how many proposals kept
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
