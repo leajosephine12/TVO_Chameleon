@@ -10,6 +10,7 @@ model is told why and asked again (up to MODEL_MAX_RETRIES times).
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -66,6 +67,20 @@ def _entry(item, reasons: list[str]) -> dict:
     }
 
 
+_METRIC = re.compile(r"[A-Za-z]{1,2}\d{1,2}")
+_BLOCK = re.compile(r"[a-z][a-z0-9]*-\d+|page")
+
+
+def _tidy_ids(item: dict) -> dict:
+    """Small models sometimes write "T3 Sentence is long" for "T3", or " P-2." for "p-2". Take the id out of it."""
+    metric, block = item.get("metric_id"), item.get("block_id")
+    if isinstance(metric, str) and (m := _METRIC.match(metric.strip())):
+        item = {**item, "metric_id": m.group().upper()}
+    if isinstance(block, str) and (b := _BLOCK.search(block.strip().lower())):
+        item = {**item, "block_id": b.group()}
+    return item
+
+
 def parse_proposals(reply: str, ctx: Context) -> tuple[list[Proposal], list[dict]]:
     """Read the model's reply one proposal at a time, so one malformed proposal does not cost the others.
     Raises json.JSONDecodeError or ValueError when the reply as a whole is unusable."""
@@ -76,6 +91,8 @@ def parse_proposals(reply: str, ctx: Context) -> tuple[list[Proposal], list[dict
     ok, bad = [], []
     for item in items[:MAX_PROPOSALS_CHECKED]:
         try:
+            if isinstance(item, dict):
+                item = _tidy_ids(item)
             change = item.get("change") if isinstance(item, dict) else None
             if isinstance(change, dict):
                 # The target lives on the proposal; the typed change carries a copy of it (except replace_text).
@@ -137,6 +154,7 @@ def plan_changes(
         except (json.JSONDecodeError, ValueError) as e:
             last_problem = f"The reply was not usable ({e})."
             log.info("task=%s attempt=%d/%d model_call=%.2fs outcome=unparseable", TASK, attempt, retries + 1, call_secs)
+            log.info("    the reply began: %s", " ".join(reply.split())[:300])
             messages += [{"role": "assistant", "content": reply},
                          {"role": "user", "content": f"{last_problem} Reply again with ONLY the JSON object {{\"proposals\": [...]}}."}]
             continue

@@ -47,7 +47,11 @@ Rules you must always follow:
 3. Plain text only: no HTML tags in any value.
 4. Copy 'original' exactly from the block text. Use only the block_ids you are given.
 5. Propose a change only for a finding or judgement check you were given. If you cannot fix something safely, leave it out.
-6. Reply with ONLY one JSON object: {"proposals": [ ... ]}. No explanations, no markdown. Write compact JSON."""
+6. "metric_id" is only the id in square brackets, for example "T3". "block_id" is only a block_id from the data, for example "p-2".
+7. Reply with ONLY one JSON object: {"proposals": [ ... ]}. No explanations, no markdown. Write compact JSON.
+
+Example of the reply FORMAT only (your content must come from the page data, not from this example):
+{"proposals":[{"metric_id":"J5","block_id":"a-3","rationale":"Link text says nothing.","severity":"medium","change":{"action":"set_link_text","text":"Read the budget guide"}}]}"""
 
 
 def _metric_lines(ctx: Context) -> tuple[str, set[str]]:
@@ -62,7 +66,7 @@ def _metric_lines(ctx: Context) -> tuple[str, set[str]]:
             "term": "in one of the blocks listed for the term under 'terms'",
             "judgement": "in one of the 'judgement_blocks'",
         }[p.scope]
-        lines.append(f"- {m} {p.title}: use {' or '.join(p.actions)}, {where}, at most {p.max_changes}. {p.guidance}")
+        lines.append(f"- [{m}] {p.title}: use {' or '.join(p.actions)}, {where}, at most {p.max_changes}. {p.guidance}")
     return "\n".join(lines), actions
 
 
