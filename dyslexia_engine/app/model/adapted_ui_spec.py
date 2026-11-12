@@ -21,6 +21,7 @@ Structural changes (rebuild the content of ONE block in a fixed, renderer-define
 - explain_term:      {"term", "explanation", "expected_original"}  wraps the term in <abbr title="..."> (text unchanged)
 - add_heading_before: {"heading", "level", "expected_original"}  a heading placed in front of the block
 - stop_autoplay:     {}  removes autoplay from a video/audio element and shows its controls
+- split_list:        {"groups": [{"label", "item_ids": [...]}, ...], "level"?}  one list becomes several, each under a heading
 
 There is deliberately no way to send HTML, run an arbitrary DOM operation, delete an element or move one.
 expected_original is a precondition: the block's text as the backend saw it. If the live text differs
@@ -288,11 +289,30 @@ class GroupMenuItems(_Structural):
         return self
 
 
+class SplitList(_Structural):
+    """Cut a long list into several shorter lists, each under its own heading. Items keep their order and their text:
+    all groups' item_ids, in order, must equal the list's current items, or the renderer skips the change."""
+
+    block_id: TargetId
+    action: Literal["split_list"] = "split_list"
+    groups: list[MenuGroup] = Field(min_length=2, max_length=MAX_ITEMS)
+    level: Literal[2, 3, 4, 5, 6] = 3
+
+    @model_validator(mode="after")
+    def _check_items(self) -> "SplitList":
+        ids = [i for g in self.groups for i in g.item_ids]
+        if len(ids) != len(set(ids)):
+            raise ValueError("each list item may appear in only one group, once.")
+        if self.block_id in ids:
+            raise ValueError("the list itself cannot be one of its items.")
+        return self
+
+
 Change = Annotated[
     Union[
         ReplaceText, SetStyle, TextToList, SplitIntoSteps, AddButtonLabel, GroupMenuItems,
         SetLinkText, SetButtonLabel, SetAltText, AddSectionHeading,
-        SplitParagraph, ExplainTerm, AddHeadingBefore, StopAutoplay,
+        SplitParagraph, ExplainTerm, AddHeadingBefore, StopAutoplay, SplitList,
     ],
     Field(discriminator="action"),
 ]
@@ -300,7 +320,7 @@ CONTENT_ACTIONS = ("replace_text", "set_style")
 STRUCTURAL_ACTIONS = (
     "text_to_list", "split_into_steps", "add_button_label", "group_menu_items",
     "set_link_text", "set_button_label", "set_alt_text", "add_section_heading",
-    "split_paragraph", "explain_term", "add_heading_before", "stop_autoplay",
+    "split_paragraph", "explain_term", "add_heading_before", "stop_autoplay", "split_list",
 )
 
 

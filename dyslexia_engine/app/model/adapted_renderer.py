@@ -175,7 +175,7 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
     menu_items = {
         i: [[index.get(item_id) for item_id in group.item_ids] for group in change.groups]
         for i, change in enumerate(spec.changes)
-        if change.action == "group_menu_items"
+        if change.action in {"group_menu_items", "split_list"}
     }
     result = RenderResult(html="")
 
@@ -300,6 +300,26 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
                 heading = soup.new_tag(f"h{change.level}")
                 heading.string = change.heading
                 tag.insert_before(heading)
+            elif change.action == "split_list":
+                if tag.name not in {"ul", "ol"}:
+                    raise ValueError("target is not a list")
+                groups = menu_items[i]
+                if any(item is None for group in groups for item in group):
+                    raise ValueError("one or more list item ids were not found")
+                resolved = [item for group in groups for item in group]
+                current = [child for child in tag.find_all(recursive=False) if isinstance(child, Tag)]
+                if len(resolved) != len(current) or any(a is not b for a, b in zip(resolved, current)):
+                    raise ValueError("group item ids do not match the list's current direct items in order")
+                pieces = []
+                for group, items in zip(change.groups, groups):
+                    heading = soup.new_tag(f"h{change.level}")
+                    heading.string = group.label
+                    part = soup.new_tag(tag.name)
+                    part.attrs = {k: v for k, v in tag.attrs.items() if k != "id"}
+                    for item in items:
+                        part.append(item.extract())
+                    pieces += [heading, part]
+                tag.replace_with(*pieces)
             elif change.action == "stop_autoplay":
                 if tag.name not in {"video", "audio"}:
                     raise ValueError("target is not a video or audio element")
