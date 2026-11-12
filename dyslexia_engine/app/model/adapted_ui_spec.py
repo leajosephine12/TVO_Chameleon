@@ -17,6 +17,10 @@ Structural changes (rebuild the content of ONE block in a fixed, renderer-define
 - set_button_label: {"label", "expected_original"}
 - set_alt_text:     {"alt", "expected_original"}
 - add_section_heading: {"heading", "level", "expected_original"}
+- split_paragraph:   {"parts": [...], "expected_original"}  the same words cut into shorter paragraphs (no rewriting)
+- explain_term:      {"term", "explanation", "expected_original"}  wraps the term in <abbr title="..."> (text unchanged)
+- add_heading_before: {"heading", "level", "expected_original"}  a heading placed in front of the block
+- stop_autoplay:     {}  removes autoplay from a video/audio element and shows its controls
 
 There is deliberately no way to send HTML, run an arbitrary DOM operation, delete an element or move one.
 expected_original is a precondition: the block's text as the backend saw it. If the live text differs
@@ -32,7 +36,7 @@ from .guards import lost_facts
 ALLOWED_CSS_PROPERTIES = frozenset({
     "font-size", "font-family", "font-weight", "font-style", "line-height", "letter-spacing", "word-spacing",
     "max-width", "margin", "margin-top", "margin-bottom", "padding", "color", "background-color",
-    "text-align", "text-decoration", "column-count",
+    "text-align", "text-decoration", "column-count", "min-width", "min-height",
 })
 _VALUE = re.compile(r"^[\w\s.,%#()'\"-]+$")
 _FORBIDDEN_IN_VALUE = ("url(", "expression", "javascript", "@import", "var(")
@@ -210,6 +214,55 @@ class AddSectionHeading(_Structural):
     expected_original: Original
 
 
+MAX_PARTS = 8
+MAX_EXPLANATION_CHARS = 200
+
+
+class SplitParagraph(_Structural):
+    """Cut one paragraph into several shorter ones. The words are not changed, only where the paragraph breaks."""
+
+    block_id: TargetId
+    action: Literal["split_paragraph"] = "split_paragraph"
+    parts: list[PlainText] = Field(min_length=2, max_length=MAX_PARTS)
+    expected_original: Original
+
+    @model_validator(mode="after")
+    def _same_words(self) -> "SplitParagraph":
+        if " ".join(" ".join(self.parts).split()) != " ".join(self.expected_original.split()):
+            raise ValueError("the parts must contain exactly the words of expected_original, in order, with nothing added or removed.")
+        return self
+
+
+class ExplainTerm(_Structural):
+    """Mark a term or abbreviation so its explanation shows on hover and to screen readers. The visible text is unchanged."""
+
+    block_id: TargetId
+    action: Literal["explain_term"] = "explain_term"
+    term: Label
+    explanation: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_EXPLANATION_CHARS, pattern=r"^[^\r\n]+$"),
+        AfterValidator(_plain),
+    ]
+    expected_original: Original
+
+
+class AddHeadingBefore(_Structural):
+    """Insert a heading in front of a block, to break up a long run of content."""
+
+    block_id: TargetId
+    action: Literal["add_heading_before"] = "add_heading_before"
+    heading: Label
+    level: Literal[2, 3, 4, 5, 6] = 2
+    expected_original: Original
+
+
+class StopAutoplay(_Structural):
+    """Stop a video or audio element from starting by itself and give it visible controls."""
+
+    block_id: TargetId
+    action: Literal["stop_autoplay"] = "stop_autoplay"
+
+
 class MenuGroup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -239,6 +292,7 @@ Change = Annotated[
     Union[
         ReplaceText, SetStyle, TextToList, SplitIntoSteps, AddButtonLabel, GroupMenuItems,
         SetLinkText, SetButtonLabel, SetAltText, AddSectionHeading,
+        SplitParagraph, ExplainTerm, AddHeadingBefore, StopAutoplay,
     ],
     Field(discriminator="action"),
 ]
@@ -246,6 +300,7 @@ CONTENT_ACTIONS = ("replace_text", "set_style")
 STRUCTURAL_ACTIONS = (
     "text_to_list", "split_into_steps", "add_button_label", "group_menu_items",
     "set_link_text", "set_button_label", "set_alt_text", "add_section_heading",
+    "split_paragraph", "explain_term", "add_heading_before", "stop_autoplay",
 )
 
 
