@@ -22,6 +22,12 @@ reviewer accepts or denies
 The Recommendation is the team's shared object plus four optional fields: `title`, `category`, `change` (the typed
 change) and `preview_html` or `preview_css`. A dyslexia recommendation is still a valid one.
 
+## What code decides without the model
+
+Text size (L3), line spacing and justified text (L2) and line length (L1): the fix is the threshold itself, so
+`computed.py` writes the CSS. These go through the same guardrails and apply path, are merged into one
+recommendation per block, and are still returned when the model step fails.
+
 ## What the model can change
 
 The model answers with a **typed change**: a closed list defined in

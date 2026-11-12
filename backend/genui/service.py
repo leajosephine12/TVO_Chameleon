@@ -15,6 +15,7 @@ from app.model.runner import ModelOutputError
 from bs4 import BeautifulSoup
 from pydantic import TypeAdapter, ValidationError
 
+from .computed import COMPUTED_METRICS, computed_recommendations
 from .measure import measure
 from .planner import plan_changes
 from .schemas import A11yRecommendation
@@ -43,10 +44,14 @@ def analyze_general(html: str, url: str | None = None, rendered: dict | None = N
     findings = measure(html, url, uncapped=True)
     if rendered:
         findings += rendered["findings"]
-    recommendations, report, model_error = [], None, None
+    # Layout fixes are computed, not proposed: they ship even when the model step fails (see computed.py).
+    recommendations, computed_rejected = computed_recommendations(html, findings)
+    report, model_error = None, None
     try:
-        plan = plan_changes(html, findings, **plan_options)
-        recommendations, report = plan.recommendations, plan.report()
+        for_model = [f for f in findings if f["metric_id"] not in COMPUTED_METRICS]
+        plan = plan_changes(html, for_model, **{"start_id": len(recommendations) + 1, **plan_options})
+        recommendations, report = recommendations + plan.recommendations, plan.report()
+        report["rejected"] = computed_rejected + report["rejected"]
     except MODEL_ERRORS as e:
         model_error = str(e)  # the measured findings still ship; the UI can say the model step failed
     return {"level": "general", "recommendations": recommendations, "model_error": model_error,
