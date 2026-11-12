@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from .context import Context, build_context
 from .guardrails import check_proposal, select
-from .policy import MAX_CHANGES
+from .policy import MAX_CHANGES, NO_LIMITS, UNLIMITED
 from .preview import preview
 from .prompt import build_messages
 from .recommend import to_recommendation
@@ -31,7 +31,7 @@ from .standin import standin_caller
 
 log = logging.getLogger("app.model")
 TASK = "genui"
-MAX_PROPOSALS_CHECKED = 40  # each one is applied and the page measured again; a runaway reply must not stall the server
+MAX_PROPOSALS_CHECKED = UNLIMITED if NO_LIMITS else 40  # each one is applied and the page measured again; a runaway reply must not stall the server
 
 # Typed changes that carry the block's current text as a precondition. The code sets it from the live block
 # (the model never retypes it), so a change can never be applied to text that has since changed.

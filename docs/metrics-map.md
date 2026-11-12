@@ -188,3 +188,35 @@ working search).
 
 Before steps 2, 3 and 5: they all add to `backend/genui`, and the `14-implement-level2` branch moves
 files it imports (`adapted_renderer.py`, `adapted_ui_spec.py`). Settle that first.
+
+### Future: model judgements that change structure, not only wording
+
+On the captured TVO lessons, almost every suggestion is a text rewrite, because the lessons have none
+of the structural problems code measures (long paragraphs, missing headings, vague links). The
+judgements below would add structural suggestions. They are ordered by value for TVO lessons.
+
+**Reusing page changes genui already has (small).** Each should need two entries: the instruction in
+`accessibility_metrics/judgement.py` and a row in `backend/genui/policy.py`. Not yet tried, so "small"
+is an estimate.
+
+| New judgement | What the reviewer would see | Existing change it uses | Metric |
+|---|---|---|---|
+| A paragraph changes topic partway through | A new subheading where the topic shifts | `add_heading_before` | Extends S2, which today only counts headings per 200 words |
+| A task paragraph tells the learner to do several things | The paragraph becomes numbered steps | `split_into_steps` | S6 exists but only looks at existing steps; this widens it to prose |
+| A heading is vague or does not match its section ("Introduction", "More") | A specific heading | `replace_text` | J2 and J3 (bucket 2); the model can judge them instead of language tools |
+| A heading buries its key word | The key word moved to the front | `replace_text` | S7 (bucket 2) |
+
+The first two go beyond "this text is too long". TVO lessons are mostly activity instructions
+("Brainstorm your ideas and record your thinking using a method of your choice"), so turning those into
+steps and breaking sections by topic changes how the page is organised, not just its wording.
+
+**Needing a new kind of page change (larger).**
+
+- **Visible definition for a term.** `explain_term` only adds a hover tooltip, which touch-screen and
+  keyboard users may never see. A definition in brackets or a small glossary would help more.
+- **One question per list item.** Fixes the "two questions in one bullet" case found in Learning
+  Activity 4 (S5 finds it today, with no fix).
+- **Label next to an icon.** The most frequent unfixed finding on the captured lessons (L11, four or
+  five per lesson). `add_button_label` only works on buttons and links.
+- **Alt text judged from the image itself.** Several lesson images have empty alt text. The model
+  would need to see the image, which genui does not send today.

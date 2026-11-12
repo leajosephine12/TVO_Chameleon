@@ -89,6 +89,7 @@ reported in `guardrails.rejected` of the `/analyze` response with its reasons.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MODEL_MOCK`, `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY` | | Same model settings as the rest of the backend |
+| `A11Y_NO_LIMITS` | (off) | Set to 1 to lift every limit below and the per-metric limits, to see everything a page could get. Slow, and costly with a paid model |
 | `A11Y_MAX_CHANGES` | 12 | Most changes proposed for one page |
 | `A11Y_MAX_FINDINGS` | 20 | Most findings shown to the model |
 | `A11Y_JUDGEMENT` | 1 | Set to 0 to skip the model's own judgement checks (shorter prompt, faster) |
