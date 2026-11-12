@@ -78,6 +78,7 @@ def test_json_schema_is_a_discriminated_union_on_action():
     assert set(items["discriminator"]["mapping"]) == {
         "replace_text", "set_style", "text_to_list", "split_into_steps", "add_button_label", "group_menu_items",
         "set_link_text", "set_button_label", "set_alt_text", "add_section_heading",
+        "split_paragraph", "explain_term", "add_heading_before", "stop_autoplay", "split_list",
     }
 
 
