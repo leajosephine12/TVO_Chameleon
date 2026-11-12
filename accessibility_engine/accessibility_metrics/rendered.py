@@ -84,7 +84,9 @@ def collect(url: str, timeout_ms: int = 30000) -> dict:
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        # bypass_csp: a captured page is served with a policy that blocks every script. Under it the axe
+        # script tag never loads and never fails, so add_script_tag would wait forever.
+        page = browser.new_page(viewport={"width": 1280, "height": 900}, bypass_csp=True)
         page.goto(url, timeout=timeout_ms, wait_until="networkidle")
         m = page.evaluate(_MEASURE_JS)
         m["axe_violations"], m["axe_error"] = [], None
