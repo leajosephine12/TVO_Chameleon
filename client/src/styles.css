@@ -55,6 +55,7 @@ p {
 
 .app {
   height: 100vh;
+  height: 100dvh; /* excludes mobile browser toolbars; the line above is the fallback */
   display: flex;
   flex-direction: column;
 }
@@ -87,17 +88,6 @@ p {
   border: 3px solid var(--ink);
   border-radius: 50%;
   background: radial-gradient(circle, var(--ink) 0 5px, transparent 6px);
-}
-
-.pill {
-  padding: 2px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--chrome);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .view-as {
@@ -148,7 +138,8 @@ p {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 450px;
+  /* The panel shrinks on mid-size screens (small laptops, iPad landscape) so the page keeps room. */
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 34vw, 450px);
   gap: 12px;
   padding: 0 12px 12px;
 }
@@ -177,18 +168,6 @@ p {
   padding: 10px 12px;
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
-}
-
-.dots {
-  display: flex;
-  gap: 6px;
-}
-
-.dots i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--line);
 }
 
 .address {
@@ -397,14 +376,10 @@ p {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin: 4px 0 10px;
   padding: 14px 16px;
   border: 2px solid var(--accent);
   border-radius: 10px;
-}
-
-.suggestion-detail h2 {
-  font-size: 20px;
-  line-height: 1.25;
 }
 
 .suggestion-detail > p:not(.eyebrow) {
@@ -684,10 +659,11 @@ h3.eyebrow {
 }
 
 /* Narrow screens: stack the page and the panel, and scroll as one. */
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .app {
     height: auto;
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .workspace {
@@ -697,6 +673,7 @@ h3.eyebrow {
   .preview iframe {
     flex: none;
     height: 70vh;
+    height: 70dvh;
   }
 
   .review-scroll {

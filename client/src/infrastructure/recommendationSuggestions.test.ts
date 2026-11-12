@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Recommendation } from '../domain/analysis';
 import { indexBlocks } from './pageBlocks';
-import { suggestionsFromRecommendations } from './recommendationSuggestions';
+import { describeElement, suggestionsFromRecommendations } from './recommendationSuggestions';
 
 function recommendation(overrides: Partial<Recommendation>): Recommendation {
   return {
@@ -137,5 +137,21 @@ describe('page-wide recommendations', () => {
     expect(
       suggestionsFor('<p data-cid="a">Text</p>', [recommendation({ block_id: 'page', type: 'color' })]),
     ).toEqual([]);
+  });
+});
+
+describe('describeElement', () => {
+  it('names the element in plain words instead of showing its tag', () => {
+    expect(describeElement('p')).toBe('Paragraph');
+    expect(describeElement('h2')).toBe('Heading');
+    expect(describeElement('li')).toBe('List item');
+  });
+
+  it('reads the tag out of a block id', () => {
+    expect(describeElement('p-12')).toBe('Paragraph');
+  });
+
+  it('uses a neutral name for a tag it does not know', () => {
+    expect(describeElement('custom-widget')).toBe('Text on the page');
   });
 });

@@ -3,35 +3,21 @@ import { PRIORITY_LABEL, WCAG_CHECK_LABEL } from './labels';
 
 interface Props {
   suggestion: Suggestion;
-  position: number;
-  total: number;
   status: ReviewStatus;
   onDecide: (status: ReviewStatus) => void;
+  /** Open the suggestion above or below this one in the list. */
   onPrevious: () => void;
   onNext: () => void;
 }
 
-export function SuggestionDetail({
-  suggestion,
-  position,
-  total,
-  status,
-  onDecide,
-  onPrevious,
-  onNext,
-}: Props) {
+/** The full suggestion, shown directly under its row in the list. The row above already names it. */
+export function SuggestionDetail({ suggestion, status, onDecide, onPrevious, onNext }: Props) {
   // Pressing the current decision again takes it back.
   const toggle = (next: ReviewStatus) => onDecide(status === next ? 'open' : next);
 
   return (
-    <article className="suggestion-detail" aria-labelledby="suggestion-title">
-      <p className="eyebrow">
-        <span>
-          Suggestion {position} of {total}
-        </span>{' '}
-        · {suggestion.location}
-      </p>
-      <h2 id="suggestion-title">{suggestion.title}</h2>
+    <article className="suggestion-detail" aria-label={`Details: ${suggestion.title}`}>
+      <p className="eyebrow">{suggestion.location}</p>
       <p>{suggestion.summary}</p>
       {suggestion.evidence && <p className="evidence">Evidence: {suggestion.evidence}</p>}
       <div className="chips">
