@@ -1,7 +1,9 @@
 import type { Patch } from '../domain/review';
 
 const MARKER = 'data-chameleon';
-const HIGHLIGHT_CSS = 'outline: 3px solid #b93a0f; outline-offset: 2px;';
+/** Set on every element the selected suggestion is about, so each one gets the same red outline. */
+const HIGHLIGHT_ATTR = 'data-chameleon-highlight';
+const HIGHLIGHT_CSS = `[${HIGHLIGHT_ATTR}] { outline: 3px solid #b93a0f !important; outline-offset: 2px !important; }`;
 
 type Undo = () => void;
 const undos = new WeakMap<Document, Undo[]>();
@@ -30,8 +32,8 @@ function replaceText(target: Element, find: string, text: string): boolean {
   return false;
 }
 
-/** Swaps an element for the given HTML, or for nothing when the HTML is empty. */
-function replaceElement(target: Element, html: string): void {
+/** Swaps an element for the given HTML, or for nothing when the HTML is empty. Returns the new elements. */
+function replaceElement(target: Element, html: string): Element[] {
   const doc = target.ownerDocument;
   const template = doc.createElement('template');
   template.innerHTML = html;
@@ -42,6 +44,7 @@ function replaceElement(target: Element, html: string): void {
     replacement.forEach((node) => node.parentNode?.removeChild(node));
     anchor.replaceWith(target);
   });
+  return replacement.filter((node): node is Element => node.nodeType === 1 /* Node.ELEMENT_NODE */);
 }
 
 function setStyleAttribute(target: Element, style: string): void {
@@ -54,11 +57,19 @@ function setStyleAttribute(target: Element, style: string): void {
   });
 }
 
-/** Puts a document in the state these patches describe, first removing anything added last time. */
+/**
+ * Puts a document in the state these patches describe, first removing anything added last time.
+ * `highlightSelector` may match several elements, and all of them are outlined, including any that an
+ * approved change replaces with new markup.
+ */
 export function applyPatches(doc: Document, patches: Patch[], highlightSelector: string | null): void {
   doc.querySelectorAll(`[${MARKER}]`).forEach((el) => el.remove());
   (undos.get(doc) ?? []).reverse().forEach((undo) => undo());
   undos.delete(doc);
+  doc.querySelectorAll(`[${HIGHLIGHT_ATTR}]`).forEach((el) => el.removeAttribute(HIGHLIGHT_ATTR));
+
+  // Found before the patches run, because a replaced element is no longer on the page to be found after.
+  const highlighted = new Set<Element>(highlightSelector ? doc.querySelectorAll(highlightSelector) : []);
 
   const css: string[] = [];
   patches.forEach((patch) => {
@@ -78,7 +89,8 @@ export function applyPatches(doc: Document, patches: Patch[], highlightSelector:
       return;
     }
     if (patch.kind === 'replaceElement') {
-      replaceElement(target, patch.html);
+      const replacements = replaceElement(target, patch.html);
+      if (highlighted.has(target)) replacements.forEach((el) => highlighted.add(el));
       return;
     }
     if (patch.kind === 'setStyle') {
@@ -90,7 +102,10 @@ export function applyPatches(doc: Document, patches: Patch[], highlightSelector:
     Array.from(template.content.children).forEach((el) => el.setAttribute(MARKER, ''));
     target[patch.position](template.content);
   });
-  if (highlightSelector) css.push(`${highlightSelector} { ${HIGHLIGHT_CSS} }`);
+  highlighted.forEach((el) => {
+    if (el.isConnected) el.setAttribute(HIGHLIGHT_ATTR, '');
+  });
+  css.push(HIGHLIGHT_CSS);
 
   const style = doc.createElement('style');
   style.setAttribute(MARKER, '');

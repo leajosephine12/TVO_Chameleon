@@ -15,10 +15,11 @@ import { SuggestionList } from './SuggestionList';
 interface Props {
   session: ReviewSession;
   version: ReviewVersion;
-  selectedId: string;
+  /** The suggestion that is open, or null when all of them are closed. */
+  selectedId: string | null;
   error: string | null;
   onVersionChange: (versionId: string) => void;
-  onSelect: (suggestionId: string) => void;
+  onSelect: (suggestionId: string | null) => void;
   onDecide: (suggestionId: string, status: ReviewStatus) => void;
   onSeeVisitorView: () => void;
 }
@@ -37,13 +38,13 @@ export function ReviewPanel({
   const suggestions = rankSuggestions(version.suggestions);
   const counts = countByStatus(suggestions, decisions);
   const applied = appliedSuggestions(session, version.id).length;
-  const selectedIndex = Math.max(
-    suggestions.findIndex((s) => s.id === selectedId),
-    0,
-  );
-  const selected = suggestions[selectedIndex];
-  const step = (by: number) =>
-    onSelect(suggestions[(selectedIndex + by + suggestions.length) % suggestions.length].id);
+  const selected = suggestions.find((s) => s.id === selectedId);
+  // Opens the suggestion `by` places from the open one, wrapping around at either end of the list.
+  // With none open, forward opens the first and back opens the last.
+  const step = (by: number) => {
+    const index = selected ? suggestions.indexOf(selected) : by > 0 ? -1 : 0;
+    onSelect(suggestions[(index + by + suggestions.length) % suggestions.length].id);
+  };
 
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -87,27 +88,23 @@ export function ReviewPanel({
           </p>
         )}
         {suggestions.length === 0 ? (
-          <p className="no-suggestions">
-            No suggestions for this page yet. They will appear here once the analysis backend provides them.
-          </p>
+          <p className="no-suggestions">No suggestions for this version of the page.</p>
         ) : (
-          <>
-            <SuggestionList
-              suggestions={suggestions}
-              decisions={decisions}
-              selectedId={selected.id}
-              onSelect={onSelect}
-            />
-            <SuggestionDetail
-              suggestion={selected}
-              position={selectedIndex + 1}
-              total={suggestions.length}
-              status={statusOf(decisions, selected.id)}
-              onDecide={(status) => onDecide(selected.id, status)}
-              onPrevious={() => step(-1)}
-              onNext={() => step(1)}
-            />
-          </>
+          <SuggestionList
+            suggestions={suggestions}
+            decisions={decisions}
+            selectedId={selected?.id ?? null}
+            onSelect={onSelect}
+            renderDetail={(suggestion) => (
+              <SuggestionDetail
+                suggestion={suggestion}
+                status={statusOf(decisions, suggestion.id)}
+                onDecide={(status) => onDecide(suggestion.id, status)}
+                onPrevious={() => step(-1)}
+                onNext={() => step(1)}
+              />
+            )}
+          />
         )}
       </div>
       <footer className="review-footer">

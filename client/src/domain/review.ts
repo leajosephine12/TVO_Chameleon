@@ -30,7 +30,7 @@ export interface Suggestion {
   whatWouldChange: string;
   before: string;
   after: string;
-  /** The element to point at in the preview, or null when it applies to the whole page. */
+  /** The elements to outline in the preview (a selector may match several), or null for the whole page. */
   targetSelector: string | null;
   patches: Patch[];
 }

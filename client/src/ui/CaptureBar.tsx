@@ -64,14 +64,11 @@ export function CaptureBar({
   const [url, setUrl] = useState('');
   const [logExpanded, setLogExpanded] = useState(false);
   const running = progress.status === 'running';
-  // The same link can be captured more than once, so captures also show when they were made.
-  const options = [
-    { page: samplePage, text: samplePage.label },
-    ...captures.map((capture) => {
-      const captured = pageFromCapture(capture);
-      return { page: captured, text: `${captured.label} (${new Date(capture.capturedAt).toLocaleString()})` };
-    }),
-  ];
+  // The list holds each captured link once (see useCaptures), so the date only says how recent the copy is.
+  const capturedOptions = captures.map((capture) => ({
+    page: pageFromCapture(capture),
+    text: `${pageFromCapture(capture).label} (${new Date(capture.capturedAt).toLocaleString()})`,
+  }));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -101,15 +98,24 @@ export function CaptureBar({
           <select
             value={page.url}
             onChange={(e) => {
-              const next = options.find((o) => o.page.url === e.target.value);
+              const next = [{ page: samplePage }, ...capturedOptions].find(
+                (o) => o.page.url === e.target.value,
+              );
               if (next) onPageChange(next.page);
             }}
           >
-            {options.map((o) => (
-              <option key={o.page.url} value={o.page.url}>
-                {o.text}
-              </option>
-            ))}
+            <optgroup label="Example">
+              <option value={samplePage.url}>{samplePage.label}</option>
+            </optgroup>
+            {capturedOptions.length > 0 && (
+              <optgroup label="Captured pages, newest first">
+                {capturedOptions.map((o) => (
+                  <option key={o.page.url} value={o.page.url}>
+                    {o.text}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
       </form>
