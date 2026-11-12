@@ -6,17 +6,22 @@ it says which metric may be fixed with which typed action, where, and how many t
 Numbers come from accessibility_engine THRESHOLDS (the metrics PDF), never from here.
 """
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from accessibility_metrics.thresholds import THRESHOLDS
 
+# A11Y_NO_LIMITS=1 lifts every budget in this file (changes per page and per metric, findings and blocks shown to
+# the model, proposals checked), to see everything a page could get. Slow, and costly with a paid model.
+NO_LIMITS = os.environ.get("A11Y_NO_LIMITS", "") == "1"
+UNLIMITED = 10_000
+
 # Whole page: how many things may change in one analysis. Reviewer attention is the budget.
-MAX_CHANGES = int(os.environ.get("A11Y_MAX_CHANGES", "12"))
+MAX_CHANGES = UNLIMITED if NO_LIMITS else int(os.environ.get("A11Y_MAX_CHANGES", "12"))
 # The model reads at most this many findings and this much page text per call.
-MAX_FINDINGS_IN_PROMPT = int(os.environ.get("A11Y_MAX_FINDINGS", "20"))
+MAX_FINDINGS_IN_PROMPT = UNLIMITED if NO_LIMITS else int(os.environ.get("A11Y_MAX_FINDINGS", "20"))
 MAX_BLOCK_CHARS = 2000
 MAX_ANCHORS = 40
-MAX_JUDGEMENT_BLOCKS = int(os.environ.get("A11Y_JUDGEMENT_BLOCKS", "12"))
+MAX_JUDGEMENT_BLOCKS = UNLIMITED if NO_LIMITS else int(os.environ.get("A11Y_JUDGEMENT_BLOCKS", "12"))
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,9 @@ POLICY: dict[str, MetricPolicy] = {
     "M1": MetricPolicy("Media starts by itself", "wcag", ("stop_autoplay",), 2, "block",
                        "Stop autoplay and show the controls."),
 }
+
+if NO_LIMITS:
+    POLICY = {metric: replace(policy, max_changes=UNLIMITED) for metric, policy in POLICY.items()}
 
 # Metrics the model may raise itself (accessibility_engine.judgement.TEXT_JUDGEMENT), each labelled 'model judgement'.
 JUDGEMENT_METRICS = tuple(m for m, p in POLICY.items() if p.scope == "judgement")
