@@ -16,7 +16,13 @@ def _finding_for(p: Proposal, ctx: Context) -> dict | None:
 def evidence(p: Proposal, ctx: Context) -> str:
     f = _finding_for(p, ctx)
     if f is not None:
-        return f"{p.metric_id}: {f['detail']} Limit: {f['threshold']}. Source: {f['source']}."
+        value = f"{p.metric_id}: {f['detail']} Limit: {f['threshold']}. Source: {f['source']}."
+        crawl = f.get("crawl")
+        if crawl:
+            pages = ", ".join(crawl.get("pages", []))
+            websites = ", ".join(crawl.get("websites", []))
+            value += f" Crawl evidence. Pages: {pages}. Websites used: {websites}."
+        return value
     limit, source = threshold_source(p.metric_id)
     return f"model judgement / {p.metric_id}: {limit}. Source: {source}."
 
@@ -75,10 +81,13 @@ def before_after(p: Proposal, change, ctx: Context) -> tuple[str, str]:
 
 def to_recommendation(number: int, p: Proposal, change, ctx: Context, html: str | None, css: str | None) -> A11yRecommendation:
     original, suggestion = before_after(p, change, ctx)
+    found = _finding_for(p, ctx)
+    crawl = (found or {}).get("crawl", {})
     policy = POLICY[p.metric_id]
     return A11yRecommendation(
         id=f"r{number}", block_id=p.block_id, type=p.metric_id, original=original, suggestion=suggestion,
         rationale=p.rationale, evidence=evidence(p, ctx), severity=p.severity, status="pending",
         title=policy.title, category=policy.category, change=change.model_dump(mode="json"),
         preview_html=html, preview_css=css,
+        evidence_type="crawl" if crawl else "page", evidence_websites=crawl.get("websites", []),
     )

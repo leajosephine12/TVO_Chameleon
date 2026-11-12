@@ -21,6 +21,7 @@ from app.model.runner import ModelOutputError
 from pydantic import ValidationError
 
 from .context import Context, build_context
+from .crawl import CrawlSnapshot
 from .guardrails import check_proposal, select
 from .policy import MAX_CHANGES
 from .preview import preview
@@ -124,6 +125,7 @@ def plan_changes(
     transport=None,
     caller=None,
     judgement: bool | None = None,
+    crawl_snapshot: CrawlSnapshot | None = None,
 ) -> PlanResult:
     """findings: every finding on the unchanged page (uncapped); they are also the baseline for the re-measure gate.
     Raises ModelOutputError / ModelCallError / ModelConfigError like the other model calls. Never returns an invalid change."""
@@ -132,7 +134,7 @@ def plan_changes(
         judgement = os.environ.get("A11Y_JUDGEMENT", "1") != "0"
     max_changes = max_changes or MAX_CHANGES
     retries = config.max_retries if max_retries is None else max_retries
-    ctx = build_context(html, findings, judgement=judgement)
+    ctx = build_context(html, findings, judgement=judgement, crawl_snapshot=crawl_snapshot)
     ctx.baseline = findings
     result = PlanResult()
     if not ctx.findings and not ctx.judgement_blocks:

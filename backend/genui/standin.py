@@ -6,6 +6,7 @@ the product: with a real model (Ollama, Claude, anything OpenAI-format) none of 
 """
 import json
 import re
+from collections import Counter
 
 _SPLIT_AT = re.compile(r",\s+(?:and|but|so|which|because)\s+|\s+(?:and|but|because|although|while)\s+|;\s+|,\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(])")
@@ -60,6 +61,17 @@ def _proposal(finding: dict, data: dict) -> dict | None:
             return make({"action": "split_paragraph", "parts": parts}, "Paragraph cut into shorter ones.")
     if m == "J5":
         return make({"action": "set_link_text", "text": f"Read about {_slug_words(block.get('href', ''))}"[:40]}, "Link text now says where it goes.")
+    if m == "J7":
+        title = measured.get("destination_title")
+        if title:
+            return make({"action": "set_link_text", "text": title[:80]}, "Link text now distinguishes its destination.")
+    if m == "J8":
+        labels = [item["label"] for item in measured.get("labels", []) if item.get("label")]
+        if labels:
+            common = Counter(labels).most_common()
+            label = max(common, key=lambda item: (item[1], -len(item[0])))[0]
+            if label != block.get("text"):
+                return make({"action": "set_link_text", "text": label[:80]}, "Link text now matches the label used elsewhere.")
     if m == "J11":
         hint = (block.get("hint") or "").split()
         return make({"action": "add_button_label", "label": (" ".join(hint[:2]).title() if hint else "Open")[:40], "placement": "after_icon"},

@@ -48,7 +48,8 @@ Rules you must always follow:
 4. Copy 'original' exactly from the block text. Use only the block_ids you are given.
 5. Propose a change only for a finding or judgement check you were given. If you cannot fix something safely, leave it out.
 6. "metric_id" is only the id in square brackets, for example "T3". "block_id" is only a block_id from the data, for example "p-2".
-7. Reply with ONLY one JSON object: {"proposals": [ ... ]}. No explanations, no markdown. Write compact JSON.
+7. For crawl findings, crawled pages are read-only evidence. Change only the given block on the analyzed page; do not claim to change other pages.
+8. Reply with ONLY one JSON object: {"proposals": [ ... ]}. No explanations, no markdown. Write compact JSON.
 
 Example of the reply FORMAT only (your content must come from the page data, not from this example):
 {"proposals":[{"metric_id":"J5","block_id":"a-3","rationale":"Link text says nothing.","severity":"medium","change":{"action":"set_link_text","text":"Read the budget guide"}}]}"""

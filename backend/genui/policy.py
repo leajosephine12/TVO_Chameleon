@@ -65,6 +65,10 @@ POLICY: dict[str, MetricPolicy] = {
     # --- judgement of wording and labels ---
     "J5": MetricPolicy("Link text says nothing", "wcag", ("set_link_text",), 4, "block",
                        "Say where the link goes or what it does, in a few words."),
+    "J7": MetricPolicy("Link text points to different pages", "wcag", ("set_link_text",), 4, "block",
+                       "Make this link label specific to its destination and distinguish it from the other targets."),
+    "J8": MetricPolicy("Link text varies for the same page", "wcag", ("set_link_text",), 4, "block",
+                       "Use the clearest label already used for this destination elsewhere in the unit."),
     "J11": MetricPolicy("Icon has no text", "wcag", ("add_button_label",), 4, "block",
                         "Add a short visible label for what the button does."),
     "J12": MetricPolicy("Alt text is missing or generic", "wcag", ("set_alt_text",), 4, "block",

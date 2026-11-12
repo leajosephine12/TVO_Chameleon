@@ -54,3 +54,5 @@ class A11yRecommendation(Recommendation):
     change: dict | None = Field(default=None, description="The typed page change (a GenUI spec change)")
     preview_html: str | None = Field(default=None, description="What replaces the block on the page, built by the renderer")
     preview_css: str | None = Field(default=None, description="CSS declarations for a set_style change")
+    evidence_type: Literal["page", "crawl"] = "page"
+    evidence_websites: list[str] = Field(default_factory=list)

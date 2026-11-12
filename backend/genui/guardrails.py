@@ -32,6 +32,7 @@ from app.model.guards import lost_facts, numbers_in
 from pydantic import ValidationError
 
 from .context import Context
+from .crawl import measure_crawl
 from .measure import measure
 from .policy import FORMULA_KEYS, MAX_CHANGES, POLICY, TIER_ORDER
 from .schemas import Proposal, RewriteText
@@ -39,7 +40,7 @@ from .schemas import Proposal, RewriteText
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 _CSS_METRICS = {m for m, p in POLICY.items() if p.actions == ("set_style",)}
 # Counts that must not go up after any change (formula scores are compared per block instead).
-_REGRESSION_METRICS = ("T3", "T4", "S1", "S2", "S3", "S5", "T8", "J5", "J11", "J12", "J14", "N8", "M1")
+_REGRESSION_METRICS = ("T3", "T4", "S1", "S2", "S3", "S5", "T8", "J5", "J7", "J8", "J11", "J12", "J14", "N8", "M1")
 _GENERIC_HEADINGS = {"introduction", "more", "overview", "section", "heading", "untitled", "part 1", "part 2"}
 _ALT_PREFIXES = ("image of", "picture of", "photo of", "graphic of", "icon of")
 _WORD = re.compile(r"[a-z0-9]+")
@@ -291,6 +292,14 @@ def _score(findings: list[dict], metric: str, block_id: str) -> float | None:
     return max(values) if values else None
 
 
+def _measure_after(html: str, ctx: Context) -> list[dict]:
+    url = ctx.crawl_snapshot.seed_url if ctx.crawl_snapshot else None
+    findings = measure(html, url=url, uncapped=True)
+    if ctx.crawl_snapshot:
+        findings.extend(measure_crawl(ctx.crawl_snapshot, seed_html=html))
+    return findings
+
+
 def applies_cleanly(p: Proposal, ctx: Context, change) -> list[str]:
     """Apply the change to a copy of the live page. Stored on ctx so improves_metric reuses the result."""
     result = apply_adapted_spec(ctx.html, AdaptedUISpec(changes=[change]))
@@ -305,7 +314,7 @@ def improves_metric(p: Proposal, ctx: Context, change) -> list[str]:
     metric = p.metric_id
     if metric in _CSS_METRICS or POLICY[metric].scope == "judgement" or ctx.applied_html is None:
         return []  # CSS is checked by css_policy (no browser here); judgement metrics have no code measurement
-    after = measure(ctx.applied_html, uncapped=True)
+    after = _measure_after(ctx.applied_html, ctx)
     before = ctx.baseline
     if metric in FORMULA_KEYS:
         was, now = _score(before, metric, p.block_id), _score(after, metric, p.block_id)
@@ -324,7 +333,7 @@ def improves_metric(p: Proposal, ctx: Context, change) -> list[str]:
 def no_regression(p: Proposal, ctx: Context, change) -> list[str]:
     if ctx.applied_html is None or p.metric_id in _CSS_METRICS:
         return []
-    after = measure(ctx.applied_html, uncapped=True)
+    after = _measure_after(ctx.applied_html, ctx)
     worse = [m for m in _REGRESSION_METRICS if _count(after, m) > _count(ctx.baseline, m)]
     return [f"the change makes {', '.join(worse)} worse." ] if worse else []
 

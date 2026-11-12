@@ -88,7 +88,10 @@ flowchart TD
 
 - Rendered metrics deferred: L7 style variance, L8 density, L9/L10 fold checks,
   and the paragraph-spacing half of L2.
-- Bucket 2 (spaCy/embeddings) and bucket 3 (multi-page crawl) of the metrics map.
+- Bucket 2 (spaCy/embeddings) remains deferred. The GenUI library has an opt-in,
+  bounded crawl for J7/J8 and report-only N4; J6, J13, N5, and N9 remain
+  deferred because their measurement or action is underspecified (see
+  `backend/genui/README.md`).
 - Applying a model text edit replaces the block's text wholesale (drops inline
   tags inside the block).
 - Levels beyond 1 are not implemented.

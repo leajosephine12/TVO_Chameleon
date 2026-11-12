@@ -8,6 +8,7 @@ Nothing about wording, headings, labels, lists or styles is hardcoded: those com
 ```
 page HTML
   -> measure.py       the accessibility engine's findings (T, S, J, N, M metrics; L metrics when the page was rendered)
+  -> crawl.py         optional, bounded same-origin sample for J7/J8 and report-only N4
   -> context.py       pick the findings the model may act on, and quote the blocks it needs
   -> prompt.py        one prompt, listing only the metrics and typed changes that are on this page
   -> planner.py       ONE model call: {"proposals": [ {metric_id, block_id, rationale, severity, change} ]}
@@ -19,8 +20,8 @@ reviewer accepts or denies
   -> service.apply_general   the accepted typed changes, applied by the renderer
 ```
 
-The Recommendation is the team's shared object plus four optional fields: `title`, `category`, `change` (the typed
-change) and `preview_html` or `preview_css`. A dyslexia recommendation is still a valid one.
+The Recommendation is the team's shared object plus optional GenUI fields: `title`, `category`, `change`, preview
+HTML/CSS, `evidence_type`, and `evidence_websites`. A dyslexia recommendation is still a valid one.
 
 ## What the model can change
 
@@ -39,15 +40,43 @@ The model answers with a **typed change**: a closed list defined in
 | `stop_autoplay` | Remove autoplay and show the controls |
 | `set_style` | A short list of safe CSS properties, with checked values |
 
-## Metrics covered (25)
+## Metrics covered (27 model-actionable metrics)
 
 `policy.py` is the one table that says which metric may be fixed with which change, where, and how many times.
 Thresholds always come from `accessibility_engine` (the metrics PDF), never from this package.
 
-- **Measured by code:** T1 T2 T3 T4 T7 T8, S1 S2 S3 S5, J5 J11 J12 J14, N8, L1 L2 L3 L4 L12, M1
+- **Measured by code:** T1 T2 T3 T4 T7 T8, S1 S2 S3 S5, J5 J7 J8 J11 J12 J14, N8, L1 L2 L3 L4 L12, M1
 - **Judged by the model itself** (no code finding; labelled "model judgement"): T9 S4 S6 J15
-- **Not covered, on purpose:** metrics with no safe typed change (N1 to N7, N9 to N11, J1 to J4, J6 to J10, J13,
-  T5, T10, T11, S7, L5 to L11, M2, M3), report-only T6, and the metrics that need other pages (crawl, issue #17).
+- **Crawl report only:** N4 (navigation order; no safe typed action to move navigation elements).
+- **Not covered, on purpose:** J6 (similarity definition is not specified for deterministic re-measurement), J13
+  (synonym judgement), N5 (what counts as the same help-link position is ambiguous), and N9 (click-depth root is
+  unspecified and the metric is report-only). Also not covered: metrics with no safe typed change (N1 to N3, N5 to
+  N7, N9 to N11, J1 to J4, J9 to J10, T5, T10, T11, S7, L5 to L11, M2, M3), report-only T6, and the other
+  metrics that need multiple pages but do not yet have a validated measurement.
+
+## Crawl metrics
+
+Pass `crawl=True` to opt in; crawling is disabled by default, and requires the analyzed page's absolute `url`.
+
+```python
+result = analyze_general(html, url="https://example.org/unit/page", crawl=True)
+```
+
+`crawl.py` only follows direct, unique links from the supplied page, and only to the same scheme, host, and port.
+It samples at most six pages total (including the supplied page), uses a five-second timeout and a one-megabyte
+response limit, accepts HTML only, does not follow redirects, sends no cookies or credentials, and rejects hosts
+that resolve to non-public IP addresses. External links, static assets, and failed fetches are excluded; fetch
+failures appear in `result["crawl"]["warnings"]`.
+
+The only crawl measurements are J7 (the same link label points to multiple destinations), J8 (a destination's
+label differs from the unit's most common label), and N4 (shared links in the first non-empty `<nav>` appear in a
+different DOM order). J7/J8 can produce normal typed `set_link_text` recommendations on the analyzed page. Crawled pages
+are evidence only and are never modified. N4 is returned as a report-only finding. Recommendations carry
+`evidence_type="crawl"` and `evidence_websites`; their evidence text also lists the pages and websites used.
+
+J6 and J13 need semantic judgements without a sufficiently defined scoring method; N5's "position" and N9's
+click-depth root are not defined precisely enough for a safe measurement. They are intentionally deferred rather
+than approximated. No crawl metric or crawl-derived evidence is sent to the model unless `crawl=True`.
 
 ## The guardrails
 
@@ -96,7 +125,8 @@ a model run the same pipeline, guardrails included. It is not the product.
 ```python
 from genui import analyze_general, apply_general
 
-result = analyze_general(html)               # {"recommendations": [...], "findings": [...], "guardrails": {...}, "model_error": ...}
+result = analyze_general(html)               # page-only analysis; crawl is opt-in
+result = analyze_general(html, url=url, crawl=True)  # includes the bounded crawl report
 adapted = apply_general(html, accepted)      # {"adapted_html", "applied", "skipped", "skipped_reasons"}
 ```
 

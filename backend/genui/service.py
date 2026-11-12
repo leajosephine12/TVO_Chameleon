@@ -15,6 +15,7 @@ from app.model.runner import ModelOutputError
 from bs4 import BeautifulSoup
 from pydantic import TypeAdapter, ValidationError
 
+from .crawl import crawl_unit, measure_crawl
 from .measure import measure
 from .planner import plan_changes
 from .schemas import A11yRecommendation
@@ -39,18 +40,33 @@ def _capped(findings: list[dict], per_metric: int = 10) -> list[dict]:
     return out
 
 
-def analyze_general(html: str, url: str | None = None, rendered: dict | None = None, **plan_options) -> dict:
+def analyze_general(
+    html: str,
+    url: str | None = None,
+    rendered: dict | None = None,
+    *,
+    crawl: bool = False,
+    **plan_options,
+) -> dict:
     findings = measure(html, url, uncapped=True)
     if rendered:
         findings += rendered["findings"]
+    crawl_snapshot = None
+    crawl_report = {"enabled": False, "pages": [], "websites": [], "metrics": [], "warnings": []}
+    if crawl:
+        if not url:
+            raise ValueError("crawl=True requires the analyzed page's absolute URL.")
+        crawl_snapshot = crawl_unit(url, html)
+        findings.extend(measure_crawl(crawl_snapshot))
+        crawl_report = crawl_snapshot.report()
     recommendations, report, model_error = [], None, None
     try:
-        plan = plan_changes(html, findings, **plan_options)
+        plan = plan_changes(html, findings, crawl_snapshot=crawl_snapshot, **plan_options)
         recommendations, report = plan.recommendations, plan.report()
     except MODEL_ERRORS as e:
         model_error = str(e)  # the measured findings still ship; the UI can say the model step failed
     return {"level": "general", "recommendations": recommendations, "model_error": model_error,
-            "findings": _capped(findings), "guardrails": report}
+            "findings": _capped(findings), "guardrails": report, "crawl": crawl_report}
 
 
 def _edited_change(rec: A11yRecommendation, html: str) -> dict:

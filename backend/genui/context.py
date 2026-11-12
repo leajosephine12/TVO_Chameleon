@@ -9,6 +9,7 @@ from app.adaptation_engine import _index_blocks
 from app.model.adapted_renderer import block_text
 from bs4 import BeautifulSoup, Tag
 
+from .crawl import CrawlSnapshot
 from .measure import PROSE_TAGS
 from .policy import (
     JUDGEMENT_METRICS, MAX_ANCHORS, MAX_BLOCK_CHARS, MAX_FINDINGS_IN_PROMPT, MAX_JUDGEMENT_BLOCKS, POLICY, TIER_ORDER,
@@ -31,6 +32,7 @@ class Context:
     judgement: dict[str, str] = field(default_factory=dict)
     baseline: list[dict] = field(default_factory=list)  # every finding on the unchanged page, uncapped (for the re-measure gate)
     applied_html: str | None = None  # the page after the proposal being checked (set by the applies_cleanly check)
+    crawl_snapshot: CrawlSnapshot | None = None
 
     def text(self, block_id: str) -> str:
         return block_text(self.index[block_id])
@@ -81,7 +83,13 @@ def _describe(block_id: str, tag: Tag, ids: dict[int, str]) -> dict:
     return info
 
 
-def build_context(html: str, findings: list[dict], *, judgement: bool = True) -> Context:
+def build_context(
+    html: str,
+    findings: list[dict],
+    *,
+    judgement: bool = True,
+    crawl_snapshot: CrawlSnapshot | None = None,
+) -> Context:
     soup = BeautifulSoup(html, "html.parser")
     index = _index_blocks(soup)
     ids = {id(tag): block_id for block_id, tag in index.items()}
@@ -93,7 +101,7 @@ def build_context(html: str, findings: list[dict], *, judgement: bool = True) ->
     actionable.sort(key=lambda f: (TIER_ORDER.get(f.get("tier", "F"), 9), list(POLICY).index(f["metric_id"])))
     actionable = actionable[:MAX_FINDINGS_IN_PROMPT]
 
-    ctx = Context(html=html, soup=soup, index=index, findings=actionable, blocks={})
+    ctx = Context(html=html, soup=soup, index=index, findings=actionable, blocks={}, crawl_snapshot=crawl_snapshot)
     for f in actionable:
         if f["block_id"] in index and f["block_id"] not in ctx.blocks:
             ctx.blocks[f["block_id"]] = describe(f["block_id"])
@@ -132,13 +140,16 @@ def build_context(html: str, findings: list[dict], *, judgement: bool = True) ->
 
 def findings_view(ctx: Context) -> list[dict]:
     """The findings as the model reads them: where, what was measured, the limit, and the source."""
-    return [
-        {
+    view = []
+    for f in ctx.findings:
+        item = {
             "metric_id": f["metric_id"], "block_id": f["block_id"], "measured": f["measured"],
             "detail": f["detail"], "limit": f["threshold"], "source": f["source"],
         }
-        for f in ctx.findings
-    ]
+        if f.get("crawl"):
+            item["crawl"] = f["crawl"]
+        view.append(item)
+    return view
 
 
 def threshold_source(metric_id: str) -> tuple[str, str]:
