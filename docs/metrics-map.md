@@ -1,7 +1,7 @@
 # Metrics → implementation map
 
 Source: `docs/metrics.pdf` (TVO Chameleon Metrics — Beyond WCAG 2.0 AA).
-Design only — nothing here is implemented yet.
+Written as the design. What is implemented today is under "Status and next steps" at the end.
 
 ## The split
 
@@ -144,3 +144,47 @@ judgement).
   are exactly the values teachers/testers will want to tune — never inline
   these numbers.
 - **Tier (C/D/E/F) rides along** on each finding so the UI can prioritise.
+
+## Status and next steps
+
+Checked against the code on the `general_recommendations` branch, not against the plan above.
+Of the 57 metrics in this map:
+
+| Status | Count | Metrics |
+|---|---|---|
+| Measured by code, fix shown in the General tab | 21 | T1 T2 T3 T4 T7 T8, S1 S2 S3 S5, J5 J11 J12 J14, N8, L1 L2 L3 L4 L12, M1 |
+| Judged by the model, shown in the General tab | 4 | T9 S4 S6 J15 |
+| Measured, but no suggestion appears | 9 | T6, N1 N2 N3 N6 N7, L6 L11, M2 |
+| Defined for the vision model, not used by the app | 3 | J10 N11 L5 |
+| Not implemented | 20 | L7 L8 L9 L10 (bucket 1, deferred); T5 S7 J1 J2 J3 J4 J9 (bucket 2); J6 J7 J8 J13 N4 N5 N9 (bucket 3); T10 N10 (bucket 4) |
+
+Partly done: L2 does not measure paragraph spacing, L12 does not count colours, S5 finds a list item
+with several sentences but has no fix, N8 finds menu depth but has no fix, and J12 and J14 only have
+their stoplist half.
+
+L1, L2 and L3 are fixed by code (`backend/genui/computed.py`). The other fixes are written by the
+model, so they need a real model: the `MODEL_MOCK=1` stand-in only splits sentences.
+
+### Plan, in order of cost against what a reviewer gets
+
+1. **Turn on a real model (no code).** Simpler wording (T1 T2 T7), abbreviations (T8) and the four
+   judgement metrics (T9 S4 S6 J15) appear. Not yet run against a real model, so do this first.
+2. **Show the nine measured findings as advice cards (small, client only).** T6, N1 N2 N3 N6 N7,
+   L6, L11 and M2 are already in the `/analyze_general` response under `findings`. A read-only card
+   with no Approve button surfaces them without inventing page changes. Open question: should the
+   General tab show things a reviewer cannot approve?
+3. **Vision judgements J10, N11, L5 (medium).** The registry (`VISION_JUDGEMENT`), the prompt and
+   the screenshot exist in the older `/analyze` path. The work is sending the screenshot from the
+   general flow. They have no automatic fix, so they are advice cards too.
+4. **Finish the partly-done ones (small each).** Paragraph spacing for L2 and the colour count for
+   L12 are a few lines of measuring in `rendered.py`. Leave L7 to L10 until a reviewer asks.
+5. **Bucket 2: T5, S7, J1 to J4, J9 (large).** Before adding spaCy and an embedding model, try them
+   as model judgement checks. If that is good enough, the dependencies are never needed.
+6. **Bucket 3: J6 to J8, J13, N4, N5, N9 (largest).** Needs a crawler over a whole unit, and the app
+   reviews one lesson at a time. Its own ticket (issue #17).
+
+Left out on purpose: T10 (T1 and T2 already cover it per paragraph) and N10 (a captured page has no
+working search).
+
+Before steps 2, 3 and 5: they all add to `backend/genui`, and the `14-implement-level2` branch moves
+files it imports (`adapted_renderer.py`, `adapted_ui_spec.py`). Settle that first.

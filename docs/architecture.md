@@ -15,6 +15,7 @@ flowchart TD
     subgraph BE["backend/ (FastAPI, :8001 — the only server)"]
         AN["POST /analyze {html, url?, render?}"]
         AD["POST /adapted {html, recommendations}"]
+        GEN["POST /analyze_general, /adapted_general<br/>backend/genui: general accessibility"]
     end
 
     subgraph ACC["accessibility_engine/ (metrics library)"]
@@ -40,6 +41,10 @@ flowchart TD
     CAP --> UI
     UI -->|html| AN
     UI -->|html + final statuses| AD
+    UI -->|"html + url (General tab)"| GEN
+    GEN --> TM
+    GEN --> SC
+    GEN --> RD
     AN --> ENG
     AN --> TM
     AN --> SC
@@ -74,6 +79,51 @@ flowchart TD
 4. `POST /adapted {html, recommendations}` → engine types via `apply_level1`,
    model text types via `generate_adapted_ui`. Returns adapted HTML + injected CSS.
    Send the same HTML as in step 2 — block ids (`p-4`) resolve against it.
+
+## Why two pairs of endpoints
+
+The review UI has a **General accessibility version** tab and a **Dyslexia version** tab. Until this
+change, every recommendation for a captured page appeared in the Dyslexia tab and the General tab
+was empty. The reasons, in the order they were found:
+
+1. **One mixed list.** `POST /analyze` returned the dyslexia rule engine's recommendations
+   (`analyze_level1`, evidence "Level 1 guideline ...") and, in the same list, model text
+   recommendations driven by the general `accessibility_engine` metrics (long sentences, hard
+   words). Nothing on a `Recommendation` says which audience it is for.
+2. **One tab.** The client (`analysisReviewRepository.ts`) put that whole list into the version
+   with id `dyslexia` and blanked the others, so general findings were shown as dyslexia ones.
+3. **No route.** The general flow (`backend/genui`) had `analyze_general` / `apply_general` but
+   no HTTP endpoint, no entry in `backendProxy.js` and no client call.
+4. **No preview.** The client only knew the dyslexia types. General types (`T3`, `S1`, `J5`, ...)
+   were dropped, and the `title`, `category`, `preview_html`, `preview_css` fields were ignored.
+5. **Layout fixes never arrived.** Text size, line spacing and line length need a rendered page,
+   which the client never asked for. When they were measured, the cap of 20 findings in the
+   model prompt was filled by reading-level findings first, so they were cut. Rendering a
+   captured page also hung: the snapshot server blocks scripts, and the axe script tag then
+   never loads and never fails.
+
+The fix keeps the two audiences apart from the backend to the tab:
+
+| | Dyslexia version | General accessibility version |
+|---|---|---|
+| Analyse | `POST /analyze {html, rules_only: true}` | `POST /analyze_general {html, url, render: true}` |
+| Apply | `POST /adapted` | `POST /adapted_general` |
+| What it holds | dyslexia guideline rules (font, spacing, colour, columns, italics) | general metrics: typed page changes from the model, plus layout fixes computed in code |
+| Client mapper | `suggestionsFromRecommendations` | `suggestionsFromGeneralRecommendations` |
+
+- The client calls both analyses in parallel on the same HTML. Each fills only its own tab, and
+  one failing leaves the other in place with a note saying what could not be run.
+- `rules_only` skips the model call in `/analyze`: its text recommendations come from the
+  general metrics, and those now arrive through `/analyze_general`. Without the flag
+  `/analyze` behaves as before.
+- **Computed layout fixes** (`backend/genui/computed.py`): for text size (L3), line spacing and
+  justified text (L2) and line length (L1) the fix is the threshold itself, so code writes the
+  CSS. They pass the same guardrails, are merged into one card per block, and are still
+  returned when the model step fails. The findings cap now takes turns between metrics.
+- Suggestion ids carry the version (`...#general-r1`), because both analyses number from `r1`
+  and decisions are stored by id.
+- The Dyslexia version is built on the General one, so its visitors also get the approved
+  general changes.
 
 ## Contracts
 

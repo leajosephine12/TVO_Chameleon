@@ -80,7 +80,15 @@ For client development, run `npm start` in the repository root and `npm run dev`
 ### What the review shows
 
 When a captured page is chosen, the client sends the captured lesson (`frames/f0.html`, or the page itself
-when it has no lesson frame) to `POST /analyze` and lists what comes back in the **Dyslexia version**.
+when it has no lesson frame) to the backend twice, and each answer fills its own tab:
+
+- `POST /analyze_general` fills the **General accessibility version**: long sentences, long paragraphs,
+  vague link text and so on, plus text size, line spacing and line length measured on the rendered page.
+  The layout part needs Playwright in the backend (`uv run playwright install chromium`); without it the
+  tab says the layout was not checked and still shows the rest.
+- `POST /analyze` fills the **Dyslexia version** with the dyslexia guideline rules.
+
+Why they are separate is written down in `docs/architecture.md` ("Why two pairs of endpoints").
 Page-wide rules (font, spacing, colour, layout, emphasis) are previewed with the CSS that `POST /adapted`
 produces for them. Recommendations that cannot be shown on the page are left out, such as icon-font tags
 reported as italics, or text from `MODEL_MOCK=1` that is not in the page. The mock model returns the same
