@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Recommendation } from '../domain/analysis';
 import { indexBlocks } from './pageBlocks';
-import { suggestionsFromRecommendations } from './recommendationSuggestions';
+import {
+  describeElement,
+  suggestionsFromGeneralRecommendations,
+  suggestionsFromRecommendations,
+} from './recommendationSuggestions';
 
 function recommendation(overrides: Partial<Recommendation>): Recommendation {
   return {
@@ -137,5 +141,67 @@ describe('page-wide recommendations', () => {
     expect(
       suggestionsFor('<p data-cid="a">Text</p>', [recommendation({ block_id: 'page', type: 'color' })]),
     ).toEqual([]);
+  });
+});
+
+describe('describeElement', () => {
+  it('names the element in plain words instead of showing its tag', () => {
+    expect(describeElement('p')).toBe('Paragraph');
+    expect(describeElement('h2')).toBe('Heading');
+    expect(describeElement('li')).toBe('List item');
+  });
+
+  it('reads the tag out of a block id', () => {
+    expect(describeElement('p-12')).toBe('Paragraph');
+  });
+
+  it('uses a neutral name for a tag it does not know', () => {
+    expect(describeElement('custom-widget')).toBe('Text on the page');
+  });
+});
+
+describe('general accessibility recommendations', () => {
+  const blocks = indexBlocks('<body><p data-cid="a">One long sentence.</p><p>Not captured.</p></body>');
+
+  it("swap the block for the HTML the backend rendered, with the backend's title and category", () => {
+    const [suggestion] = suggestionsFromGeneralRecommendations(
+      [
+        recommendation({
+          type: 'S1',
+          title: 'Paragraph is long',
+          category: 'cognitive',
+          preview_html: '<p>One.</p><p>Long sentence.</p>',
+        }),
+      ],
+      blocks,
+    );
+
+    expect(suggestion).toMatchObject({ title: 'Paragraph is long', category: 'cognitive' });
+    expect(suggestion.patches).toEqual([
+      { kind: 'replaceElement', selector: '[data-cid="a"]', html: '<p>One.</p><p>Long sentence.</p>' },
+    ]);
+  });
+
+  it('style the block for a measured layout fix, with every declaration marked important', () => {
+    const [suggestion] = suggestionsFromGeneralRecommendations(
+      [recommendation({ type: 'L2+L3', preview_css: 'line-height: 1.5; font-size: 16px' })],
+      blocks,
+    );
+
+    expect(suggestion.patches).toEqual([
+      {
+        kind: 'css',
+        css: '[data-cid="a"] { line-height: 1.5 !important; font-size: 16px !important; }',
+      },
+    ]);
+  });
+
+  it('are left out when the block is not on the captured page or nothing can be previewed', () => {
+    const suggestions = suggestionsFromGeneralRecommendations(
+      [recommendation({ block_id: 'p-2', preview_html: '<p>x</p>' }), recommendation({ block_id: 'p-1' })],
+      blocks,
+    );
+
+    expect(suggestions).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PageCapture } from '../domain/capture';
+import { latestCapturePerLink, type PageCapture } from '../domain/capture';
 import type { CaptureGateway } from './ports';
 
 export interface CaptureProgress {
@@ -24,7 +24,7 @@ export function useCaptures(gateway: CaptureGateway, onCaptured: (capture: PageC
       .listCaptures()
       .then((list) => {
         if (cancelled) return;
-        setCaptures(list);
+        setCaptures(latestCapturePerLink(list));
         setServerReachable(true);
       })
       .catch(() => {
@@ -52,7 +52,7 @@ export function useCaptures(gateway: CaptureGateway, onCaptured: (capture: PageC
           setJobId(null);
           const { capture } = job;
           if (capture) {
-            setCaptures((list) => [capture, ...list.filter((c) => c.id !== capture.id)]);
+            setCaptures((list) => latestCapturePerLink([capture, ...list]));
             onCaptured(capture);
           }
         })

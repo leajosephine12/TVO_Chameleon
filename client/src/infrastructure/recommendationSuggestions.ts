@@ -1,5 +1,5 @@
 import type { Recommendation } from '../domain/analysis';
-import type { Patch, Priority, Suggestion } from '../domain/review';
+import type { Category, Patch, Priority, Suggestion } from '../domain/review';
 import { collapseWhitespace, textOfHtml, type PageBlock } from './pageBlocks';
 
 /** Recommendations that describe the whole page. Their CSS comes from the backend's /adapted call. */
@@ -24,6 +24,42 @@ const TAGS_FOR_TYPE: Record<string, string[]> = {
   italic_text: ['i', 'em', 'cite', 'dfn'],
   underline_text: ['u'],
 };
+
+/** Plain names for the HTML tags a suggestion can point at, so reviewers never see "p" or "li". */
+const ELEMENT_NAMES: Record<string, string> = {
+  p: 'Paragraph',
+  h1: 'Heading',
+  h2: 'Heading',
+  h3: 'Subheading',
+  h4: 'Subheading',
+  h5: 'Subheading',
+  h6: 'Subheading',
+  li: 'List item',
+  ul: 'List',
+  ol: 'List',
+  a: 'Link',
+  button: 'Button',
+  span: 'Text',
+  div: 'Section',
+  td: 'Table cell',
+  th: 'Table heading',
+  label: 'Form label',
+  blockquote: 'Quote',
+  figcaption: 'Image caption',
+  i: 'Italic text',
+  em: 'Italic text',
+  cite: 'Italic text',
+  dfn: 'Italic text',
+  u: 'Underlined text',
+  strong: 'Bold text',
+  b: 'Bold text',
+};
+
+/** A block id looks like "p-3": its tag, then its position in the page. Falls back to a neutral name. */
+export function describeElement(tagOrBlockId: string): string {
+  const tag = tagOrBlockId.split('-')[0].toLowerCase();
+  return ELEMENT_NAMES[tag] ?? 'Text on the page';
+}
 
 const isCssDeclaration = (text: string) => /^[a-z-]+\s*:/i.test(text);
 
@@ -95,8 +131,9 @@ function toSuggestion(rec: Recommendation, patch: Patch, block: PageBlock | unde
   const isPageWide = PAGE_WIDE_TYPES.includes(rec.type);
   return {
     id: rec.id,
-    title: TITLES[rec.type] ?? rec.type,
-    location: isPageWide ? 'Whole page' : (block?.tag ?? rec.block_id),
+    // A type with no title yet gets a neutral one rather than its internal code, such as "J5".
+    title: TITLES[rec.type] ?? 'Suggested change',
+    location: isPageWide ? 'Whole page' : describeElement(block?.tag ?? rec.block_id),
     summary: rec.rationale,
     category: 'reading',
     priority: rec.severity as Priority,
@@ -125,6 +162,50 @@ export function suggestionsFromRecommendations(
     const block = blocks[rec.block_id];
     const patch = patchFor(rec, block, pageCss);
     return patch ? [toSuggestion(rec, patch, block)] : [];
+  });
+}
+
+const CATEGORIES: Category[] = ['reading', 'cognitive', 'wcag'];
+
+/** "font-size: 16px; line-height: 1.5" with !important on each declaration, so the page's own CSS cannot win. */
+const important = (declarations: string): string =>
+  declarations
+    .split(';')
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .map((declaration) => `${declaration} !important;`)
+    .join(' ');
+
+/**
+ * Turns the general accessibility recommendations (POST /analyze_general) into suggestions.
+ * The backend's renderer has already built what each change looks like, so nothing is worked out here:
+ * a style change is CSS for the block, and any other change is the HTML that replaces the block.
+ * A recommendation is left out when its block is not on the captured page.
+ */
+export function suggestionsFromGeneralRecommendations(
+  recommendations: Recommendation[],
+  blocks: Record<string, PageBlock>,
+): Suggestion[] {
+  return recommendations.flatMap((rec) => {
+    const block = blocks[rec.block_id];
+    if (!block) return [];
+    const patch: Patch | null = rec.preview_css
+      ? { kind: 'css', css: `${block.selector} { ${important(rec.preview_css)} }` }
+      : rec.preview_html
+        ? { kind: 'replaceElement', selector: block.selector, html: rec.preview_html }
+        : null;
+    if (!patch) return [];
+    return [
+      {
+        ...toSuggestion(rec, patch, block),
+        title: rec.title ?? 'Suggested change',
+        category: CATEGORIES.find((category) => category === rec.category) ?? 'reading',
+        whatWouldChange:
+          patch.kind === 'css'
+            ? `Add the style "${rec.suggestion}".`
+            : 'Change this part of the page as shown below.',
+      },
+    ];
   });
 }
 

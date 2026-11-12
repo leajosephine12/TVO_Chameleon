@@ -3,7 +3,7 @@ import type { CaptureGateway, ReviewRepository } from '../application/ports';
 import { useCaptures } from '../application/useCaptures';
 import { useReviewSession } from '../application/useReviewSession';
 import { pageFromCapture, type PageCapture } from '../domain/capture';
-import { appliedSuggestions, rankSuggestions, type ReviewedPage } from '../domain/review';
+import { appliedSuggestions, type ReviewedPage } from '../domain/review';
 import { AppHeader, type ViewAs } from './AppHeader';
 import { CaptureBar } from './CaptureBar';
 import { capitalize } from './labels';
@@ -27,7 +27,7 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
   const [viewAs, setViewAs] = useState<ViewAs>('team');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('approved');
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Record<string, string | null>>({});
 
   const version = session?.versions.find((v) => v.id === activeVersionId) ?? session?.versions[0];
   const isVisitor = viewAs === 'visitor';
@@ -52,7 +52,8 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
     );
   }
 
-  const selectedId = selectedIds[version.id] ?? rankSuggestions(version.suggestions)[0]?.id ?? '';
+  // Nothing is open until the reviewer picks a suggestion, so a new page opens on the whole list.
+  const selectedId = selectedIds[version.id] ?? null;
   const selected = version.suggestions.find((s) => s.id === selectedId);
 
   return (

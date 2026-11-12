@@ -2,13 +2,13 @@ import express from 'express';
 
 // The analysis backend (backend/main.py, FastAPI) is a separate service. The review client only talks
 // to this server, so its requests stay on one origin and the backend needs no CORS setup.
-const ALLOWED_ENDPOINTS = ['analyze', 'adapted'];
+const ALLOWED_ENDPOINTS = ['analyze', 'adapted', 'analyze_general', 'adapted_general'];
 const MAX_BODY = '50mb'; // a captured lesson is about 1 MB of HTML
 const BACKEND_TIMEOUT_MS = 10 * 60 * 1000; // the model calls behind /analyze can take minutes
 
 /**
- * Forwards POST /backend/analyze and POST /backend/adapted to the analysis backend, unchanged.
- * Only those two endpoints are forwarded, so this cannot be used to reach anything else on the backend.
+ * Forwards POST /backend/<endpoint> to the analysis backend, unchanged, for the endpoints listed above.
+ * Only those endpoints are forwarded, so this cannot be used to reach anything else on the backend.
  *
  * @param {string} backendUrl  where the backend listens, for example http://localhost:8001
  */

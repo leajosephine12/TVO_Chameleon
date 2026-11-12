@@ -36,7 +36,7 @@ def _text(tag: Tag) -> str:
     return tag.get_text(" ", strip=True)
 
 
-def structure_checks(html: str, url: str | None = None) -> dict:
+def structure_checks(html: str, url: str | None = None, max_per_metric: int = MAX_PER_METRIC) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     ids = _index(soup)
     findings: list[dict] = []
@@ -49,7 +49,7 @@ def structure_checks(html: str, url: str | None = None) -> dict:
         if (metric_id, block_id) in seen_pairs:  # e.g. a button holding several SVGs
             return
         seen_pairs.add((metric_id, block_id))
-        if sum(1 for f in findings if f["metric_id"] == metric_id) < MAX_PER_METRIC:
+        if sum(1 for f in findings if f["metric_id"] == metric_id) < max_per_metric:
             findings.append(finding(metric_id, block_id, measured, detail))
 
     page_text = _text(body)

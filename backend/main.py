@@ -3,8 +3,16 @@
 Wraps the dyslexia_engine as a library (their readme: "The engine is plain
 Python, so it can be called directly too"), so there is no second server.
 
+Two audiences, two pairs of endpoints. They are kept apart so the review UI can show them in separate
+tabs (see "Why two pairs of endpoints" in docs/architecture.md).
+
+Dyslexia version:
 POST /analyze {html}                  -> rule-engine recs + model text recs, all status "pending"
 POST /adapted {html, recommendations} -> applies only accepted/edited ones, returns adapted HTML
+
+General accessibility version (backend/genui):
+POST /analyze_general {html}                  -> typed page changes for the general metrics, all "pending"
+POST /adapted_general {html, recommendations} -> applies the accepted/edited typed changes
 
 Model = anything OpenAI-format via dyslexia_engine's own client. For Claude:
     MODEL_BASE_URL=https://api.anthropic.com/v1
@@ -32,11 +40,15 @@ from app.model.adapted_ui_spec import parse_css
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError, load_env_file
 from app.model.layout_recs import generate_layout_recommendations
+from app.model.log import enable_timing_logs
 from app.model.runner import ModelOutputError
 from app.model.text_recs import generate_text_recommendations
 from app.schemas import Recommendation
 
+from genui import A11yRecommendation, analyze_general, apply_general
+
 load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
+enable_timing_logs()  # one line per model call in the terminal: which model, how long, how many proposals kept
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
@@ -74,6 +86,9 @@ class AnalyzeRequest(BaseModel):
     html: str = ""  # optional when render=true (the rendered page's HTML is used)
     url: str | None = None  # used by URL-dependent metrics (N2) and required for render
     render: bool = False  # render with Playwright: layout metrics + axe + screenshot + model call 2
+    # Only the dyslexia rule engine, no model call. The review UI sends this: the model's text
+    # recommendations come from the general metrics, which it gets from /analyze_general instead.
+    rules_only: bool = False
 
 
 class AdaptRequest(BaseModel):
@@ -81,8 +96,13 @@ class AdaptRequest(BaseModel):
     recommendations: list[Recommendation]
 
 
-@app.post("/analyze")
-def analyze(req: AnalyzeRequest):
+class GeneralAdaptRequest(BaseModel):
+    html: str
+    recommendations: list[A11yRecommendation]
+
+
+def _page(req: AnalyzeRequest) -> tuple[str, dict | None]:
+    """The HTML to analyse and, when render=true, what the rendered page measured."""
     rendered = None
     if req.render:
         if not req.url:
@@ -93,8 +113,34 @@ def analyze(req: AnalyzeRequest):
     html = req.html or (rendered["html"] if rendered else "")
     if not html:
         raise HTTPException(status_code=422, detail="send html, or render=true with a url")
+    return html, rendered
 
+
+@app.post("/analyze_general")
+def analyze_general_page(req: AnalyzeRequest):
+    layout_error = None
+    try:
+        html, rendered = _page(req)
+    except HTTPException:
+        raise
+    except Exception as e:  # no Playwright, or the page could not be opened: the text and structure checks still run
+        if not req.html:
+            raise HTTPException(status_code=502, detail=f"The page could not be rendered: {e}")
+        html, rendered, layout_error = req.html, None, str(e).splitlines()[0]
+    return {**analyze_general(html, req.url, rendered), "layout_error": layout_error}
+
+
+@app.post("/adapted_general")
+def adapted_general(req: GeneralAdaptRequest):
+    return apply_general(req.html, req.recommendations)
+
+
+@app.post("/analyze")
+def analyze(req: AnalyzeRequest):
+    html, rendered = _page(req)
     recs = engine.analyze_level1(html)
+    if req.rules_only:
+        return {"level": 1, "recommendations": recs, "model_error": None, "findings": []}
     model_errors = []
     index = _index_blocks(BeautifulSoup(html, "html.parser"))
     blocks = _text_blocks(index)
