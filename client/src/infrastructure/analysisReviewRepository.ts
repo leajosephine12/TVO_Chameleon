@@ -1,13 +1,32 @@
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
 import type { ReviewedPage, ReviewVersion, Suggestion } from '../domain/review';
 import { indexBlocks, normalizeHtml } from './pageBlocks';
-import { isPageWide, suggestionsFromRecommendations } from './recommendationSuggestions';
+import {
+  isPageWide,
+  suggestionsFromGeneralRecommendations,
+  suggestionsFromRecommendations,
+} from './recommendationSuggestions';
 
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
 const STUB_PAGE = '<html><head></head><body><p>Text</p></body></html>';
 
-/** The version the backend's recommendations belong to. The other versions have no analysis yet. */
-const ANALYSED_VERSION_ID = 'dyslexia';
+/**
+ * The backend analyses a page twice, once for each version, and the two results are never mixed:
+ * POST /analyze_general fills the general version and POST /analyze (dyslexia rules) fills the dyslexia one.
+ */
+const GENERAL_VERSION_ID = 'general';
+const DYSLEXIA_VERSION_ID = 'dyslexia';
+
+/** What one of the two analyses found for its version, or the reason there is nothing. */
+interface Found {
+  suggestions: Suggestion[];
+  note: string;
+}
+
+const notRun = (error: unknown): Found => ({
+  suggestions: [],
+  note: `The analysis could not be run: ${error instanceof Error ? error.message : 'unknown error'}`,
+});
 
 const fetchText = async (url: string): Promise<string> => {
   const response = await fetch(url);
@@ -38,13 +57,8 @@ export function createAnalysisReviewRepository(
   /** Splits a page URL into the folder it is in, so a frame's relative `src` can be loaded. */
   const folderOf = (pageUrl: string) => pageUrl.slice(0, pageUrl.lastIndexOf('/') + 1);
 
-  async function analysePage(page: ReviewedPage) {
-    const pageHtml = await fetchText(page.url);
-    const targetFrame = findLessonFrame(pageHtml);
-    // Both the backend and indexBlocks count tags in this exact string, so their block ids always agree.
-    const html = normalizeHtml(targetFrame ? await fetchText(folderOf(page.url) + targetFrame) : pageHtml);
-
-    const { recommendations, modelError } = await analysis.analyze(html);
+  async function dyslexiaSuggestions(page: ReviewedPage, html: string): Promise<Found> {
+    const { recommendations } = await analysis.analyze(html);
 
     // Page-wide rules are previewed with the CSS the backend would inject for each of them.
     const pageCss: Record<string, string> = {};
@@ -57,18 +71,49 @@ export function createAnalysisReviewRepository(
 
     // Ids are only unique within one analysis, and decisions are kept for all pages together.
     const suggestions = suggestionsFromRecommendations(recommendations, indexBlocks(html), pageCss).map(
-      (s) => ({
-        ...s,
-        id: `${page.url}#${s.id}`,
-      }),
+      (s) => ({ ...s, id: `${page.url}#${s.id}` }),
     );
-    return { targetFrame, suggestions, modelError };
+    return { suggestions, note: '' };
   }
 
-  /** Puts what the analysis found (or why there is none) into the version the backend analyses for. */
-  const withAnalysis = (versions: ReviewVersion[], suggestions: Suggestion[], note: string) =>
+  async function generalSuggestions(page: ReviewedPage, html: string, htmlUrl: string): Promise<Found> {
+    const absoluteUrl = new URL(htmlUrl, window.location.origin).href;
+    const { recommendations, modelError, layoutError } = await analysis.analyzeGeneral(html, absoluteUrl);
+
+    // Both analyses number from "r1", so the version is part of the id: a decision on one never marks the other.
+    const suggestions = suggestionsFromGeneralRecommendations(recommendations, indexBlocks(html)).map(
+      (s) => ({ ...s, id: `${page.url}#${GENERAL_VERSION_ID}-${s.id}` }),
+    );
+    const notes = [
+      modelError &&
+        `The language model step failed (${modelError}), so only the measured layout fixes are shown.`,
+      layoutError &&
+        `Text size, line spacing and line length were not checked, because the backend could not open the page (${layoutError}).`,
+    ];
+    return { suggestions, note: notes.filter(Boolean).join(' ') };
+  }
+
+  /** Runs both analyses on the same HTML. One failing leaves the other version's suggestions in place. */
+  async function analysePage(page: ReviewedPage) {
+    const pageHtml = await fetchText(page.url);
+    const targetFrame = findLessonFrame(pageHtml);
+    const htmlUrl = targetFrame ? folderOf(page.url) + targetFrame : page.url;
+    // Both the backend and indexBlocks count tags in this exact string, so their block ids always agree.
+    const html = normalizeHtml(targetFrame ? await fetchText(htmlUrl) : pageHtml);
+
+    const [general, dyslexia] = await Promise.all([
+      generalSuggestions(page, html, htmlUrl).catch(notRun),
+      dyslexiaSuggestions(page, html).catch(notRun),
+    ]);
+    return { targetFrame, found: { [GENERAL_VERSION_ID]: general, [DYSLEXIA_VERSION_ID]: dyslexia } };
+  }
+
+  /** Puts what each analysis found (or why there is nothing) into its own version. */
+  const withAnalysis = (versions: ReviewVersion[], found: Record<string, Found>) =>
     versions.map((v) =>
-      v.id === ANALYSED_VERSION_ID ? { ...v, suggestions, note: `${v.note} ${note}`.trim() } : v,
+      found[v.id]
+        ? { ...v, suggestions: found[v.id].suggestions, note: `${v.note} ${found[v.id].note}`.trim() }
+        : v,
     );
 
   return {
@@ -78,17 +123,17 @@ export function createAnalysisReviewRepository(
 
       const blankVersions = base.versions.map((v) => ({ ...v, suggestions: [] }));
       try {
-        const { targetFrame, suggestions, modelError } = await analysePage(page);
-        const note = modelError
-          ? `The language model step failed (${modelError}), so only the rule-based findings are shown.`
-          : '';
-        return { ...base, targetFrame, versions: withAnalysis(blankVersions, suggestions, note) };
+        const { targetFrame, found } = await analysePage(page);
+        return { ...base, targetFrame, versions: withAnalysis(blankVersions, found) };
       } catch (error) {
-        // Without the backend the page can still be looked at, so say what is missing instead of failing.
-        const reason = error instanceof Error ? error.message : 'unknown error';
+        // Without the captured page there is nothing to analyse, so say what is missing instead of failing.
+        const failed = notRun(error);
         return {
           ...base,
-          versions: withAnalysis(blankVersions, [], `The analysis could not be run: ${reason}`),
+          versions: withAnalysis(blankVersions, {
+            [GENERAL_VERSION_ID]: failed,
+            [DYSLEXIA_VERSION_ID]: failed,
+          }),
         };
       }
     },

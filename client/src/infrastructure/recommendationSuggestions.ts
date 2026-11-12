@@ -1,5 +1,5 @@
 import type { Recommendation } from '../domain/analysis';
-import type { Patch, Priority, Suggestion } from '../domain/review';
+import type { Category, Patch, Priority, Suggestion } from '../domain/review';
 import { collapseWhitespace, textOfHtml, type PageBlock } from './pageBlocks';
 
 /** Recommendations that describe the whole page. Their CSS comes from the backend's /adapted call. */
@@ -162,6 +162,50 @@ export function suggestionsFromRecommendations(
     const block = blocks[rec.block_id];
     const patch = patchFor(rec, block, pageCss);
     return patch ? [toSuggestion(rec, patch, block)] : [];
+  });
+}
+
+const CATEGORIES: Category[] = ['reading', 'cognitive', 'wcag'];
+
+/** "font-size: 16px; line-height: 1.5" with !important on each declaration, so the page's own CSS cannot win. */
+const important = (declarations: string): string =>
+  declarations
+    .split(';')
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .map((declaration) => `${declaration} !important;`)
+    .join(' ');
+
+/**
+ * Turns the general accessibility recommendations (POST /analyze_general) into suggestions.
+ * The backend's renderer has already built what each change looks like, so nothing is worked out here:
+ * a style change is CSS for the block, and any other change is the HTML that replaces the block.
+ * A recommendation is left out when its block is not on the captured page.
+ */
+export function suggestionsFromGeneralRecommendations(
+  recommendations: Recommendation[],
+  blocks: Record<string, PageBlock>,
+): Suggestion[] {
+  return recommendations.flatMap((rec) => {
+    const block = blocks[rec.block_id];
+    if (!block) return [];
+    const patch: Patch | null = rec.preview_css
+      ? { kind: 'css', css: `${block.selector} { ${important(rec.preview_css)} }` }
+      : rec.preview_html
+        ? { kind: 'replaceElement', selector: block.selector, html: rec.preview_html }
+        : null;
+    if (!patch) return [];
+    return [
+      {
+        ...toSuggestion(rec, patch, block),
+        title: rec.title ?? 'Suggested change',
+        category: CATEGORIES.find((category) => category === rec.category) ?? 'reading',
+        whatWouldChange:
+          patch.kind === 'css'
+            ? `Add the style "${rec.suggestion}".`
+            : 'Change this part of the page as shown below.',
+      },
+    ];
   });
 }
 

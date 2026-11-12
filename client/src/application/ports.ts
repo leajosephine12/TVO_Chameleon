@@ -1,4 +1,4 @@
-import type { Adaptation, Analysis, Recommendation } from '../domain/analysis';
+import type { Adaptation, Analysis, GeneralAnalysis, Recommendation } from '../domain/analysis';
 import type { CaptureJob, PageCapture } from '../domain/capture';
 import type { ReviewedPage, ReviewSession, ReviewStatus } from '../domain/review';
 
@@ -15,8 +15,11 @@ export interface CaptureGateway {
   getJob(jobId: string): Promise<CaptureJob>;
 }
 
-/** What the app needs from the analysis backend. Both calls must be given the same HTML. */
+/** What the app needs from the analysis backend. All calls must be given the same HTML. */
 export interface AnalysisGateway {
+  /** The dyslexia rules (fonts, spacing, colours, italics). */
   analyze(html: string): Promise<Analysis>;
+  /** General accessibility. `url` is where the backend can open the same page to measure its layout. */
+  analyzeGeneral(html: string, url: string): Promise<GeneralAnalysis>;
   adapt(html: string, recommendations: Recommendation[]): Promise<Adaptation>;
 }
