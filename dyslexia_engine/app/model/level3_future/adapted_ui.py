@@ -16,7 +16,7 @@ from .adapted_ui_spec import (
     SetAltText, SetButtonLabel, SetLinkText, SetStyle, SkippedRecommendation,
     format_css, parse_css,
 )
-from .schemas import Recommendation
+from ..schemas import Recommendation
 
 APPROVED = ("accepted", "edited")
 STRUCTURAL_METRIC_IDS = frozenset({"J5", "J11", "J12", "J14", "S3"})

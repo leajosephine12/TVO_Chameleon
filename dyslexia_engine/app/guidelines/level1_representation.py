@@ -1,9 +1,11 @@
-"""Level 1 guidelines: adapt the *representation* of the content.
+"""
+dyslexia_engine/guidelines/level1_representation.py
+Level 1 guidelines: adapt the *representation* of the content.
 
 Single source of truth. Every number the engine applies comes from here, and
 the same list is exposed over MCP so the AI model can cite the rule it applied.
 """
-from .schemas import Guideline
+from ..schemas import Guideline
 
 # ---- Tunable values derived from the research -------------------------------
 FONT_STACK = "Verdana, Tahoma, Arial, Calibri, sans-serif"
@@ -23,42 +25,73 @@ LINK_COLOR = "#1F4E79"
 LEVEL1_GUIDELINES: list[Guideline] = [
     Guideline(id="L1.1.1", level=1, category="Distortion of text", title="Sans-serif font",
               rule="Use sans-serif fonts like Arial, Calibri, Verdana or Tahoma.",
-              params={"font_family": FONT_STACK}),
+              params={"font_family": FONT_STACK},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.1.2", level=1, category="Distortion of text", title="Font size",
               rule="Use 12 to 14 point (16 to 19 pixels).",
-              params={"font_size_px": BODY_FONT_PX}),
+              params={"font_size_px": BODY_FONT_PX},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.1.3", level=1, category="Distortion of text", title="Heading size",
               rule="Headings must be at least 20% larger than body text.",
-              params={"heading_scale": HEADING_SCALE}),
+              params={"heading_scale": HEADING_SCALE},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.1.4", level=1, category="Distortion of text", title="Letter spacing",
               rule="Inter-character spacing is about 35% of the average letter width.",
-              params={"letter_spacing_em": LETTER_SPACING_EM, "assumed_avg_letter_width_em": AVG_LETTER_WIDTH_EM}),
+              params={"letter_spacing_em": LETTER_SPACING_EM, "assumed_avg_letter_width_em": AVG_LETTER_WIDTH_EM},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.1.5", level=1, category="Distortion of text", title="Word spacing",
               rule="Inter-word spacing is at least 3.5 times the character spacing.",
-              params={"word_spacing_em": WORD_SPACING_EM}),
+              params={"word_spacing_em": WORD_SPACING_EM},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"
+              ),
     Guideline(id="L1.1.6", level=1, category="Distortion of text", title="Line spacing",
               rule="Use at least 1.5 spacing between lines.",
-              params={"line_height": LINE_HEIGHT}),
+              params={"line_height": LINE_HEIGHT},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.1.7", level=1, category="Distortion of text", title="No underline or italics",
               rule="Avoid underlines and italics. Use bold for emphasis instead.",
-              params={"replace_with": "strong"}),
+              params={"replace_with": "strong"},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.2.1", level=1, category="Dyslexia friendly colour", title="No high contrast",
               rule="Avoid stark black on white. Use soft dark text.",
-              params={"text_color": TEXT_COLOR}),
+              params={"text_color": TEXT_COLOR},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.2.2", level=1, category="Dyslexia friendly colour", title="Single colour background",
               rule="Use one off-white, cream, light grey or soft pastel background.",
-              params={"background": BG_COLOR}),
+              params={"background": BG_COLOR},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.3.1", level=1, category="Layout", title="No columns",
               rule="Avoid multi-column page layouts.",
-              params={"column_count": 1}),
+              params={"column_count": 1},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
     Guideline(id="L1.3.2", level=1, category="Layout", title="Line length",
               rule="Keep lines to roughly 60 to 70 characters.",
-              params={"max_width_ch": MAX_LINE_CH}),
+              params={"max_width_ch": MAX_LINE_CH},
+              source="Scope. (2023, January 3). Writing dyslexic friendly content: Colours and fonts. Scope for Business. https://business.scope.org.uk/how-to-write-better-website-content-for-people-with-dyslexia/"),
 ]
 
 
 def get_guidelines(level: int) -> list[Guideline]:
     return [g for g in LEVEL1_GUIDELINES if g.level == level]
+
+
+GUIDELINES_BY_ID = {g.id: g for g in LEVEL1_GUIDELINES}
+
+
+def evidence_for(ids: str | list[str]) -> str:
+    """Build the evidence string from the guidelines' own `source` field.
+
+    Accepts "L1.1.7" or "L1.1.1, L1.1.2" or a list. Guidelines that share a
+    source are grouped so the reference isn't repeated.
+    """
+    if isinstance(ids, str):
+        ids = [i.strip() for i in ids.split(",") if i.strip()]
+    by_source: dict[str, list[str]] = {}
+    for gid in ids:
+        g = GUIDELINES_BY_ID.get(gid)
+        if g:
+            by_source.setdefault(g.source, []).append(gid)
+    return " | ".join(f"{', '.join(gids)}: {src}" for src, gids in by_source.items())
 
 
 # ---- Colour helpers ----------------------------------------------------------

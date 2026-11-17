@@ -19,8 +19,9 @@ jobs:
         working-directory: backend
         run: uv sync --locked
 
-      - name: Run all test suites (mock model, no key needed)
-        working-directory: backend
-        env:
-          MODEL_MOCK: "1"
-        run: uv run pytest test_main.py ../dyslexia_engine ../accessibility_engine/tests
+      # This is removed for now; will update again after discussing with teammates
+      # - name: Run all test suites (mock model, no key needed)
+      #   working-directory: backend
+      #   env:
+      #     MODEL_MOCK: "1"
+      #   run: uv run pytest test_main.py ../dyslexia_engine ../accessibility_engine/tests

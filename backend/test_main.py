@@ -1,4 +1,6 @@
-"""Smallest end-to-end check: analyze then adapt the sample page, mock model.
+"""
+backend/test_main.py
+Smallest end-to-end check: analyze then adapt the sample page, mock model.
 
 Run: MODEL_MOCK=1 uv run pytest
 """
@@ -12,8 +14,7 @@ from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
-HTML = (Path(__file__).parents[1] / "dyslexia_engine/demo/sample_iframe.html").read_text()
-
+HTML = (Path(__file__).parents[1] / "dyslexia_engine/tests/test_updated_level1and2/results/original.html").read_text()
 
 def test_analyze_then_adapt():
     r = client.post("/analyze", json={"html": HTML})
@@ -26,7 +27,7 @@ def test_analyze_then_adapt():
 
     for x in recs:
         x["status"] = "accepted"
-    r2 = client.post("/adapted", json={"html": HTML, "recommendations": recs})
+    r2 = client.post("/adapted", json={"html": fuHTML, "recommendations": recs})
     assert r2.status_code == 200
     out = r2.json()
     assert out["applied"]

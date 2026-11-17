@@ -12,12 +12,12 @@ from pydantic import BaseModel, Field
 
 from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetStyle, parse_css
 from .adapted_ui import select_usable
-from .client import call_model
-from .config import ModelConfig
-from .guards import numbers_in
-from .prompts import ADAPT_RULES, build_messages
-from .runner import run_task
-from .schemas import Recommendation
+from ..client import call_model
+from ..config import ModelConfig
+from ..guards import numbers_in
+from ..prompts import ADAPT_RULES, build_messages
+from ..runner import run_task
+from ..schemas import Recommendation
 
 TASK = "adapted_ui"
 

@@ -4,7 +4,7 @@ import pytest
 
 from app.model.mock import mock_response
 from app.model.sample_data import FAKE_FINDINGS, SAMPLE_BLOCKS
-from app.model.standin_analyze_text import count_syllables, split_sentences, standin_analyze_text
+from app.model.analyze_level2 import count_syllables, split_sentences, standin_analyze_text
 from app.model.text_recs import generate_text_recommendations
 
 P1, P2 = standin_analyze_text(SAMPLE_BLOCKS)["blocks"]
