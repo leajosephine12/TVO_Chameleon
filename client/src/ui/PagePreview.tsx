@@ -10,12 +10,25 @@ interface Props {
   /** The `src` of the frame the patches apply to, or null to apply them to the page itself. */
   targetFrame: string | null;
   highlightSelector: string | null;
+  /** The lesson tab to show, or null to leave the lesson on the tab it is on. */
+  tabId: string | null;
+  /** Called with the id a tab link inside the lesson switched to, such as "action". */
+  onLessonTabChange: (tabId: string) => void;
   /** Controls shown at the right of the address bar. */
   controls: ReactNode;
 }
 
 /** The reviewed page in a browser-style frame. Scripts stay off inside it, like in a captured page. */
-export function PagePreview({ url, addressLabel, patches, targetFrame, highlightSelector, controls }: Props) {
+export function PagePreview({
+  url,
+  addressLabel,
+  patches,
+  targetFrame,
+  highlightSelector,
+  tabId,
+  onLessonTabChange,
+  controls,
+}: Props) {
   const [doc, setDoc] = useState<Document | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const previewRef = useRef<HTMLElement>(null);
@@ -55,6 +68,22 @@ export function PagePreview({ url, addressLabel, patches, targetFrame, highlight
     frame.addEventListener('load', useFrameDocument); // the frame may still be loading
     return () => frame.removeEventListener('load', useFrameDocument);
   }, [doc, targetFrame]);
+
+  // A captured lesson has no scripts, so its tabs are links to "#<panel id>" and the browser shows the panel
+  // that is the target of the address. Setting the address switches the tab, like clicking the link.
+  useEffect(() => {
+    const frameWindow = targetDoc?.defaultView;
+    if (tabId && frameWindow && frameWindow.location.hash !== `#${tabId}`) frameWindow.location.hash = tabId;
+  }, [targetDoc, tabId]);
+
+  // Clicking a tab inside the lesson changes the address too, so the review panel follows it.
+  useEffect(() => {
+    const frameWindow = targetDoc?.defaultView;
+    if (!frameWindow) return undefined;
+    const reportTab = () => onLessonTabChange(frameWindow.location.hash.slice(1));
+    frameWindow.addEventListener('hashchange', reportTab);
+    return () => frameWindow.removeEventListener('hashchange', reportTab);
+  }, [targetDoc, onLessonTabChange]);
 
   useEffect(() => {
     if (targetDoc) applyPatches(targetDoc, patches, highlightSelector);

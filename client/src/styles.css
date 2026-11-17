@@ -268,6 +268,61 @@ p {
   font-weight: 700;
 }
 
+/* Lesson tabs: one list of suggestions per tab */
+.group-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* The buttons share the panel's width, so all of them stay on one line. */
+.group-tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 4px 6px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.group-tab[aria-pressed='true'] {
+  background: var(--ink);
+  color: #fff;
+}
+
+.review-panel {
+  container-type: inline-size;
+}
+
+/* In a narrow panel the counts make way, so the button names are never cut off. */
+@container (max-width: 420px) {
+  .group-count {
+    display: none;
+  }
+
+  .group-tab {
+    padding: 4px;
+  }
+}
+
+.group-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chrome);
+  color: var(--ink);
+  font-size: 11px;
+  text-align: center;
+}
+
 .review-scroll .error {
   margin-top: 6px;
   font-size: 13px;
