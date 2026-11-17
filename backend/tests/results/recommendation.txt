@@ -1,0 +1,30 @@
+LEVEL 1: 6 recs, model_error=None
+  1. inline_style p-3 status=pending
+  2. typography page status=pending
+  3. spacing page status=pending
+  4. color page status=pending
+  5. layout page status=pending
+  6. emphasis page status=pending
+  applied: ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'] | skipped: []
+
+LEVEL 1: 6 recs, model_error=None
+  1. inline_style p-3 status=pending
+  2. typography page status=pending
+  3. spacing page status=pending
+  4. color page status=pending
+  5. layout page status=pending
+  6. emphasis page status=pending
+  applied: ['r2', 'r3', 'r4', 'r5', 'r6'] | skipped: []
+
+LEVEL 2: 8 recs, model_error=None
+  1. long_sentence p-1 status=pending
+  2. difficult_word p-1 status=pending
+  3. difficult_word p-1 status=pending
+  4. difficult_word p-1 status=pending
+  5. long_sentence p-2 status=pending
+  6. difficult_word p-2 status=pending
+  7. difficult_word p-2 status=pending
+  8. plain_language p-2 status=pending
+  applied: ['r1', 'r5'] | skipped: [{'id': 'r2', 'reason': 'original text not found'}, {'id': 'r3', 'reason': 'original text not found'}, {'id': 'r4', 'reason': 'original text not found'}, {'id': 'r6', 'reason': 'original text not found'}, {'id': 'r7', 'reason': 'original text not found'}, {'id': 'r8', 'reason': 'original text not found'}]
+
+all passed
