@@ -143,6 +143,7 @@ function toSuggestion(rec: Recommendation, patch: Patch, block: PageBlock | unde
     before: rec.original,
     after: rec.suggestion || '(removed)',
     targetSelector: block?.selector ?? null,
+    tabId: isPageWide ? null : (block?.tabId ?? null),
     patches: [patch],
   };
 }

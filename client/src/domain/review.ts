@@ -32,7 +32,25 @@ export interface Suggestion {
   after: string;
   /** The elements to outline in the preview (a selector may match several), or null for the whole page. */
   targetSelector: string | null;
+  /** The lesson tab the suggestion is in. Null or missing when it applies to the whole page or the page has no tabs. */
+  tabId?: string | null;
   patches: Patch[];
+}
+
+/** A tab of a lesson, such as "Minds On". Only one tab's content is visible at a time. */
+export interface LessonTab {
+  id: string;
+  label: string;
+}
+
+/** The id of the group that holds the suggestions that are not in any one tab. */
+export const WHOLE_PAGE_GROUP_ID = 'whole-page';
+
+/** A set of suggestions the reviewer looks at together: one lesson tab, or the whole page. */
+export interface SuggestionGroup {
+  id: string;
+  label: string;
+  count: number;
 }
 
 export interface ReviewVersion {
@@ -56,6 +74,8 @@ export type Decisions = Record<string, ReviewStatus>;
 export interface ReviewSession {
   /** The `src` of the frame inside the page that the suggestions apply to, or null when they apply to the page itself. */
   targetFrame: string | null;
+  /** The tabs of the lesson in the order it shows them. Empty when the page has no tabs. */
+  lessonTabs: LessonTab[];
   versions: ReviewVersion[];
   decisions: Decisions;
 }
@@ -85,4 +105,43 @@ export function appliedSuggestions(session: ReviewSession, versionId: string): S
   const inherited = version.builtOnVersionId ? appliedSuggestions(session, version.builtOnVersionId) : [];
   const own = version.suggestions.filter((s) => statusOf(session.decisions, s.id) === 'approved');
   return [...inherited, ...own];
+}
+
+/** The tabs of a TVO Learn learning activity. Only a lesson that has all three is split by tab. */
+const STANDARD_TAB_LABELS = ['minds on', 'action', 'consolidation'];
+
+/**
+ * The lesson tabs to split suggestions by: Minds On, Action and Consolidation, in the lesson's order.
+ * A lesson that does not have all three gets no tabs, so its suggestions stay in one list.
+ */
+export function standardLessonTabs(lessonTabs: LessonTab[]): LessonTab[] {
+  const standard = lessonTabs.filter((tab) => STANDARD_TAB_LABELS.includes(tab.label.toLowerCase()));
+  return standard.length === STANDARD_TAB_LABELS.length ? standard : [];
+}
+
+/**
+ * Splits suggestions by lesson tab, so the reviewer works through one tab at a time instead of one long
+ * list. The group for the whole page comes first. Returns no groups when there are no lesson tabs,
+ * because then there is nothing to split.
+ */
+export function groupSuggestions(lessonTabs: LessonTab[], suggestions: Suggestion[]): SuggestionGroup[] {
+  if (lessonTabs.length === 0) return [];
+  const countIn = (groupId: string) => suggestions.filter((s) => groupIdOf(s) === groupId).length;
+  const groups = lessonTabs.map((tab) => ({ id: tab.id, label: tab.label, count: countIn(tab.id) }));
+  const wholePageCount = countIn(WHOLE_PAGE_GROUP_ID);
+  return wholePageCount > 0
+    ? [{ id: WHOLE_PAGE_GROUP_ID, label: 'Whole page', count: wholePageCount }, ...groups]
+    : groups;
+}
+
+/** The group a suggestion belongs to. */
+export const groupIdOf = (suggestion: Suggestion): string => suggestion.tabId ?? WHOLE_PAGE_GROUP_ID;
+
+/** The suggestions of one group. With no groups (a lesson without tabs), every suggestion is shown. */
+export function suggestionsInGroup(
+  suggestions: Suggestion[],
+  groups: SuggestionGroup[],
+  groupId: string,
+): Suggestion[] {
+  return groups.length === 0 ? suggestions : suggestions.filter((s) => groupIdOf(s) === groupId);
 }
