@@ -1,8 +1,9 @@
 # Architecture: dyslexia_engine
 
-`dyslexia_engine` is a standalone service (port 8001) that adapts a page for readers
-with dyslexia. It is called over HTTP by `backend/main.py` (the gateway), which also
-calls other engines such as `general_accessibility_engine`. This service knows nothing
+`dyslexia_engine` is a Python library that adapts a page for readers with dyslexia.
+It has no server of its own: `backend/main.py` (the gateway) imports
+`app.adaptation_engine` and calls `analyze` and `apply` directly. The gateway also
+calls other engines such as `general_accessibility_engine`. This library knows nothing
 about those engines or about the frontend.
 
 Rules in code decide what is wrong, the model rewrites text (level 2 only), the human
@@ -10,10 +11,15 @@ decides, and code applies. Every recommendation carries its citation.
 
 ```mermaid
 flowchart TD
-    GW["backend/main.py (gateway)<br/>merges engines, owns CORS / auth / routing"]
+    FE["Frontend<br/>holds accept / deny / edit state"]
 
-    subgraph DYS["dyslexia_engine/app (FastAPI, :8001)"]
-        API["main.py<br/>POST /analyze · POST /adapted"]
+    subgraph GW["backend/main.py (gateway, FastAPI)<br/>owns CORS / auth / routing, merges engines"]
+        EP["POST /analyze · POST /adapted"]
+    end
+
+    OTHER["general_accessibility_engine<br/>(other engines)"]
+
+    subgraph DYS["dyslexia_engine/app (Python library, no server)"]
         ENG["adaptation_engine.py<br/>analyze(level) · apply(level)"]
 
         subgraph L1["Level 1: representation (code only)"]
@@ -32,8 +38,9 @@ flowchart TD
 
     MODEL["Model endpoint (env vars only)<br/>Claude · Ollama/Gemma · MODEL_MOCK=1"]
 
-    GW -->|"HTTP: level + html or blocks"| API
-    API --> ENG
+    FE -->|"HTTP"| EP
+    EP -->|"Python call: engine.analyze / engine.apply<br/>(level + html or blocks)"| ENG
+    EP -.-> OTHER
     ENG -->|level 1| A1
     ENG -->|level 2| A2
     A1 --> G1
@@ -41,9 +48,24 @@ flowchart TD
     A2 --> P2 --> RUN --> CL -->|"POST /chat/completions"| MODEL
 ```
 
+## How the gateway calls the engine
+
+```python
+from app import adaptation_engine as engine
+
+result = engine.analyze(1, html=html)                       # level 1, no model call
+result = engine.analyze(2, blocks=blocks)                   # level 2, calls the model
+adapted = engine.apply(1, html=html, accepted=recs)         # AdaptResult
+adapted = engine.apply(2, blocks=blocks, accepted=recs)     # Level2ApplyResult
+```
+
+The gateway imports the module under the alias `engine` because it defines its own
+`analyze` endpoint function, which would otherwise shadow the engine's `analyze`.
+
 ## Flow
 
-1. The gateway sends `POST /analyze {level, html | blocks, enabled_rules?, max_recommendations?}`.
+1. The gateway receives `POST /analyze {level, html | blocks, ...}` from the frontend
+   and calls `engine.analyze(level, ...)`.
 2. `adaptation_engine.analyze(level, ...)` routes by `level`:
    - **Level 1** takes an HTML string and runs `analyze_level1`. One recommendation per
      offending element (italics, underline, inline styles) plus one per page-wide rule
@@ -54,9 +76,10 @@ flowchart TD
 3. The result is an `AnalyzeResult {level, recommendations, findings}`. Every
    recommendation is `pending`. Nothing has been changed yet.
 4. The user accepts, denies or edits each one. **State lives in the frontend and the
-   gateway**; this service is stateless.
-5. The gateway sends `POST /adapted {level, html | blocks, recommendations}`. `main.py`
-   keeps only `accepted` and `edited`, then `adaptation_engine.apply(level, ...)` routes:
+   gateway**; the library is stateless.
+5. The gateway receives `POST /adapted {level, html | blocks, recommendations}`, keeps
+   only `accepted` and `edited` (and `pending`, which the orchestrator treats as
+   accepted), then calls `engine.apply(level, ...)`, which routes:
    - **Level 1:** `apply_level1` edits elements and injects one `<style data-dyslexia-adapt>`
      with only the accepted page-wide sections. Returns `AdaptResult`.
    - **Level 2:** `apply_level2` applies the accepted text rewrites. Returns `Level2ApplyResult`.
@@ -72,7 +95,7 @@ flowchart TD
 
 ## Contracts
 
-- `Recommendation` (`app/schemas.py`) is the one shared object between this engine, the
+- `Recommendation` (`app/schemas.py`) is the one shared object between this library, the
   model layer and the gateway.
 - **Evidence comes from the guideline's own `source` field.** Level 1 builds it with
   `evidence_for("L1.1.7")`, which looks the id up in `guidelines/level1_representation.py`
@@ -82,14 +105,14 @@ flowchart TD
   `guidelines/level1_representation.py`.
 - Model choice is environment only: `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY`,
   `MODEL_TEMPERATURE`, or `MODEL_MOCK=1`. Loaded from `dyslexia_engine/.env`.
-- Errors: `422` bad request (unsupported level, missing `html` / `blocks`),
-  `502` model unavailable (level 2).
+- Errors: `adaptation_engine` raises `ValueError` for an unsupported level or missing
+  `html` / `blocks`, and level 2 raises on model problems. The gateway turns these into
+  `422` (bad request) and `502` (model unavailable).
 
 ## Folder structure
 
 ```
 dyslexia_engine/app/
-├── main.py                 # HTTP wrapper (FastAPI); called by backend/main.py
 ├── schemas.py              # shared Recommendation / AnalyzeResult / AdaptResult
 ├── adaptation_engine.py    # thin orchestrator: analyze(level), apply(level)
 ├── guidelines/
@@ -108,9 +131,10 @@ dyslexia_engine/app/
 
 ## Out of scope here (handled by the gateway or other engines)
 
+- The HTTP API, CORS and auth (`backend/main.py`).
 - Calling and merging `general_accessibility_engine`.
 - Rendering a URL with Playwright, screenshots, axe, layout metrics.
-- CORS, auth, and combining adapted HTML from several engines.
+- Combining adapted HTML from several engines.
 
 ## Known gaps
 
@@ -119,4 +143,4 @@ dyslexia_engine/app/
   apply against the HTML that was analyzed.
 - Levels beyond 2 are not implemented.
 - The old FastMCP server (`get_guidelines`, `analyze_html`, `apply_recommendations`) is
-  no longer in `app/main.py`. Move it to its own file if MCP clients are still needed.
+  not part of the library. Move it to its own file if MCP clients are still needed.
