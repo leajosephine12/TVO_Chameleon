@@ -1,10 +1,12 @@
-"""Chameleon backend: the one HTTP service the frontend talks to.
+"""
+backend/main.py
+Chameleon backend: the one HTTP service the frontend talks to.
 
 Wraps the dyslexia_engine as a library (their readme: "The engine is plain
 Python, so it can be called directly too"), so there is no second server.
 
-POST /analyze {html}                  -> rule-engine recs + model text recs, all status "pending"
-POST /adapted {html, recommendations} -> applies only accepted/edited ones, returns adapted HTML
+POST /analyze {html, level}                  -> engine recs (level 1 or 2), all status "pending"
+POST /adapted {html, level, recommendations} -> applies only accepted/edited ones, returns adapted HTML
 
 Model = anything OpenAI-format via dyslexia_engine's own client. For Claude:
     MODEL_BASE_URL=https://api.anthropic.com/v1
@@ -15,7 +17,6 @@ Or MODEL_MOCK=1 for no model, or Ollama per dyslexia_engine/.env.example.
 Run: uv run uvicorn main:app --port 8001
 """
 import os
-import re
 from pathlib import Path
 
 from accessibility_metrics import analyze_text, structure_checks
@@ -24,27 +25,36 @@ from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app import adaptation_engine as engine
-from app.adaptation_engine import _index_blocks
-from app.model.adapted_ui import STRUCTURAL_METRIC_IDS, generate_adapted_ui
-from app.model.adapted_renderer import apply_adapted_spec, block_text, visible_text
-from app.model.adapted_ui_spec import parse_css
-from app.model.client import ModelCallError
-from app.model.config import ModelConfigError, load_env_file
-from app.model.layout_recs import generate_layout_recommendations
-from app.model.runner import ModelOutputError
-from app.model.text_recs import generate_text_recommendations
+from app import adaptation_engine as dys_engine
 from app.schemas import Recommendation
 
-load_env_file(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
+try:  # same .env the engine uses for level 2 (same approach as run_demo_l1and2.py)
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
+except ImportError:
+    pass
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
 app = FastAPI(title="chameleon-backend")
 
 
+def _index_blocks(soup: BeautifulSoup) -> dict:
+    """Block ids '<tag>-<n>' (n counts per tag, in document order). Same html in -> same ids."""
+    index, counters = {}, {}
+    for tag in soup.find_all(True):
+        counters[tag.name] = counters.get(tag.name, 0) + 1
+        index[f"{tag.name}-{counters[tag.name]}"] = tag
+    return index
+
+
+def visible_text(tag) -> str:
+    return " ".join(tag.get_text(" ", strip=True).split())
+
+
 def _text_blocks(index: dict) -> list[dict]:
-    """Same block ids the engine uses (<tag>-<n>), filtered to prose with text."""
+    """Block ids '<tag>-<n>', filtered to prose with text."""
     return [
         {"block_id": bid, "text": visible_text(tag), "kind": tag.name}
         for bid, tag in index.items()
@@ -52,37 +62,58 @@ def _text_blocks(index: dict) -> list[dict]:
     ]
 
 
-def _model_blocks(index: dict, findings: list[dict], prose_blocks: list[dict]) -> list[dict]:
-    """Return prose plus DOM targets for the structural findings Call 1 can fix."""
-    # Structural metric support is shared with adapted_ui.
-    wanted = {f["block_id"] for f in findings if f.get("metric_id") in STRUCTURAL_METRIC_IDS}
-    blocks = {b["block_id"]: b for b in prose_blocks}
-    for block_id in wanted:
-        tag = index.get(block_id)
-        if tag is None:
-            continue
-        blocks[block_id] = {"block_id": block_id, "text": block_text(tag), "kind": tag.name}
-    return list(blocks.values())
+def _to_dict(obj):
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump(mode="json")
+    if isinstance(obj, list):
+        return [_to_dict(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _to_dict(v) for k, v in obj.items()}
+    return obj
+
+
+def _find_block_list(data):
+    """Find the list of adapted blocks (dicts with block_id) inside a Level 2 result."""
+    if isinstance(data, list) and data and all(isinstance(x, dict) and "block_id" in x for x in data):
+        return data
+    if isinstance(data, dict):
+        for v in data.values():
+            found = _find_block_list(v)
+            if found:
+                return found
+    if isinstance(data, list):
+        for v in data:
+            found = _find_block_list(v)
+            if found:
+                return found
+    return None
 
 
 # Reviewer attention is the budget now, not model speed (the 4 was tuned for local Gemma).
 MAX_RECS = int(os.environ.get("MAX_RECOMMENDATIONS", "8"))
-MODEL_ERRORS = (ModelConfigError, ModelCallError, ModelOutputError)
 
 
 class AnalyzeRequest(BaseModel):
     html: str = ""  # optional when render=true (the rendered page's HTML is used)
     url: str | None = None  # used by URL-dependent metrics (N2) and required for render
-    render: bool = False  # render with Playwright: layout metrics + axe + screenshot + model call 2
+    render: bool = False  # render with Playwright: layout metrics + axe findings
+    level: int = 1  # 1 = CSS representation, 2 = plain-language text
 
 
 class AdaptRequest(BaseModel):
     html: str
     recommendations: list[Recommendation]
+    level: int = 1
+
+
+def _check_level(level: int) -> None:
+    if level not in dys_engine.SUPPORTED_LEVELS:
+        raise HTTPException(status_code=422, detail=f"level must be one of {list(dys_engine.SUPPORTED_LEVELS)}")
 
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
+    _check_level(req.level)
     rendered = None
     if req.render:
         if not req.url:
@@ -94,91 +125,70 @@ def analyze(req: AnalyzeRequest):
     if not html:
         raise HTTPException(status_code=422, detail="send html, or render=true with a url")
 
-    recs = engine.analyze_level1(html)
-    model_errors = []
     index = _index_blocks(BeautifulSoup(html, "html.parser"))
     blocks = _text_blocks(index)
     findings = analyze_text(blocks)["findings"] + structure_checks(html, url=req.url)["findings"]
     if rendered:
         findings += rendered["findings"]
 
-    model_blocks = _model_blocks(index, findings, blocks)
-    if model_blocks:
+    recs = []
+    model_errors = []
+    if req.level == 1:
+        recs = dys_engine.analyze(1, html=html).recommendations
+    elif blocks:
         try:
-            recs += generate_text_recommendations(
-                model_blocks, {"findings": findings}, start_id=len(recs) + 1,
-                max_recommendations=MAX_RECS, judgement_checks=TEXT_JUDGEMENT,
-            )
-        except MODEL_ERRORS as e:
-            model_errors.append(str(e))  # engine recs still ship; the UI can show the model was unavailable
-    if rendered:
-        try:
-            recs += generate_layout_recommendations(
-                rendered["screenshot"], {"blocks": rendered["metrics"]["blocks"]},
-                start_id=len(recs) + 1, max_recommendations=MAX_RECS, judgement_checks=VISION_JUDGEMENT,
-            )
-        except MODEL_ERRORS as e:
-            model_errors.append(str(e))
+            recs = dys_engine.analyze(2, blocks=blocks, max_recommendations=MAX_RECS).recommendations
+        except Exception as e:  # model/config problem: level 1-style recs still work, UI can show this
+            model_errors.append(f"{type(e).__name__}: {e}")
 
-    return {"level": 1, "recommendations": recs,
+    return {"level": req.level, "recommendations": recs,
             "model_error": "; ".join(model_errors) or None, "findings": findings}
-
-
-_ENGINE_EVIDENCE = re.compile(r"^Level \d+ guideline")
-
-
-def _is_css(r: Recommendation) -> bool:
-    try:
-        parse_css(r.suggestion)
-        return True
-    except ValueError:
-        return False
 
 
 @app.post("/adapted")
 def adapted(req: AdaptRequest):
-    # Split by evidence, not type: a model rec may reuse an engine type name
-    # (Gemma emitted "typography"), which must not trigger the engine's whole stylesheet.
-    # Engine recs cite "Level <n> guideline(s) ..." — any level, so level 2 routes here too.
-    engine_recs = [r for r in req.recommendations if _ENGINE_EVIDENCE.match(r.evidence)]
-    model_recs = [r for r in req.recommendations if not _ENGINE_EVIDENCE.match(r.evidence)]
-    result = engine.apply_level1(req.html, engine_recs)
+    _check_level(req.level)
+    # The dys_engine treats "pending" as accepted and keeps "denied" denied.
+    recs = [r for r in req.recommendations if r.status in ("accepted", "edited", "pending")]
 
-    skipped = list(result.skipped)
-    if any(r.status in ("accepted", "edited") for r in model_recs):
-        soup = BeautifulSoup(result.adapted_html, "html.parser")
-        index = _index_blocks(soup)
-        blocks = [
-            {"block_id": b, "text": block_text(t), "kind": t.name, "alt": t.get("alt", "")}
-            for b, t in index.items()
-        ]
-        # CSS suggestions are layout recs (call 2); everything else is a text rewrite (call 1)
-        spec = generate_adapted_ui(
-            [r for r in model_recs if not _is_css(r)],
-            [r for r in model_recs if _is_css(r)],
-            blocks,
-        )
-        skipped += [s.id for s in spec.skipped]
-        rendered = apply_adapted_spec(str(soup), spec.spec)
-        result.adapted_html = rendered.html
-        # The spec allows at most one content change and one set_style per block,
-        # so (block_id, is_style) uniquely identifies a recommendation here.
-        failed_targets = {
-            (spec.spec.changes[i].block_id, spec.spec.changes[i].action == "set_style")
-            for i in rendered.skipped
+    if req.level == 1:
+        result = dys_engine.apply(1, html=req.html, accepted=recs)
+        return {
+            "adapted_html": result.adapted_html,
+            "injected_css": result.injected_css,
+            "applied": result.applied,
+            "skipped": list(result.skipped),
+            "contrast_ratio": result.contrast_ratio,
         }
-        for r in model_recs:
-            if r.status not in ("accepted", "edited") or r.id in skipped:
-                continue
-            if (r.block_id, _is_css(r)) in failed_targets:
-                skipped.append(r.id)
-            else:
-                result.applied.append(r.id)
+
+    # Level 2: dys_engine rewrites the text blocks, then we write the new text back into the HTML.
+    soup = BeautifulSoup(req.html, "html.parser")
+    index = _index_blocks(soup)
+    blocks = _text_blocks(index)
+    if not blocks:
+        raise HTTPException(status_code=422, detail="no prose text found for level 2")
+    try:
+        result = dys_engine.apply(2, blocks=blocks, accepted=recs)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"level 2 failed: {type(e).__name__}: {e}")
+
+    data = _to_dict(result)
+    before = {b["block_id"]: b["text"] for b in blocks}
+    changed = []
+    for nb in _find_block_list(data) or []:
+        bid = nb["block_id"]
+        after = nb.get("text") or nb.get("adapted_text") or nb.get("new_text") or ""
+        tag = index.get(bid)
+        if tag is None or not after or after == before.get(bid):
+            continue
+        tag.clear()  # inline markup inside a rewritten block is replaced by plain text
+        tag.append(after)
+        changed.append(bid)
 
     return {
-        "adapted_html": result.adapted_html,
-        "injected_css": result.injected_css,
-        "applied": result.applied,
-        "skipped": skipped,
-        "contrast_ratio": result.contrast_ratio,
+        "adapted_html": str(soup),
+        "changed_blocks": changed,
+        "applied": data.get("applied") if isinstance(data, dict) else None,
+        "skipped": data.get("skipped", []) if isinstance(data, dict) else [],
+        "result": data,
     }
