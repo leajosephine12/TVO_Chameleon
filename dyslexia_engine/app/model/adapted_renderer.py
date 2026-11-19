@@ -105,6 +105,36 @@ def _replace_text(tag: Tag, value: str) -> None:
         raise ValueError("the edit did not give the requested text, so the block was left as it was")
 
 
+_HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+# A heading goes in front of flow content, never in front of the document skeleton or the inside of a list or table.
+_NO_HEADING_BEFORE = {"html", "head", "body", "li", "dt", "dd", "tr", "td", "th", "thead", "tbody", "tfoot", "caption",
+                      "summary", "option", "source", "track"} | _HEADING_TAGS
+
+
+def _wrap_term(soup: BeautifulSoup, tag: Tag, term: str, explanation: str) -> None:
+    """Wrap the first whole-word occurrence of `term` (inside a single text node) in <abbr title=...>.
+
+    The visible text does not change. Raises ValueError, changing nothing, when the term is not found in one text node
+    or is already explained.
+    """
+    pattern = re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)")
+    for node in tag.find_all(string=True):
+        if type(node) is not NavigableString or any(p.name == "abbr" for p in node.parents):
+            continue
+        match = pattern.search(str(node))
+        if match is None:
+            continue
+        text = str(node)
+        abbr = soup.new_tag("abbr")
+        abbr["title"] = explanation
+        abbr.string = match.group()
+        node.replace_with(NavigableString(text[: match.start()]), abbr, NavigableString(text[match.end():]))
+        return
+    if any(a.get_text() == term for a in tag.find_all("abbr")):
+        raise ValueError(f"'{term}' is already explained")
+    raise ValueError(f"'{term}' was not found in one piece of text in the block")
+
+
 def _matches(current: str, expected: str) -> bool:
     return _squash(current) == _squash(expected)
 
@@ -145,7 +175,7 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
     menu_items = {
         i: [[index.get(item_id) for item_id in group.item_ids] for group in change.groups]
         for i, change in enumerate(spec.changes)
-        if change.action == "group_menu_items"
+        if change.action in {"group_menu_items", "split_list"}
     }
     result = RenderResult(html="")
 
@@ -241,6 +271,62 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
                 heading = soup.new_tag(f"h{change.level}")
                 heading.string = change.heading
                 tag.insert(0, heading)
+            elif change.action == "split_paragraph":
+                if tag.name != "p":
+                    raise ValueError("target is not a paragraph")
+                if not _matches(visible_text(tag), change.expected_original):
+                    raise ValueError("live text no longer matches expected_original")
+                if _has_rich_inline(tag):
+                    raise ValueError("block contains links or inline formatting; rich content was preserved by skipping")
+                pieces = []
+                for part in change.parts:
+                    piece = soup.new_tag("p")
+                    piece.attrs = {k: v for k, v in tag.attrs.items() if k != "id"}
+                    piece.string = part
+                    pieces.append(piece)
+                tag.replace_with(*pieces)
+            elif change.action == "explain_term":
+                if not _matches(visible_text(tag), change.expected_original):
+                    raise ValueError("live text no longer matches expected_original")
+                _wrap_term(soup, tag, change.term, change.explanation)
+            elif change.action == "add_heading_before":
+                if tag.name in _NO_HEADING_BEFORE or tag.parent is None:
+                    raise ValueError(f"a heading cannot be placed in front of a <{tag.name}>")
+                if not _matches(visible_text(tag), change.expected_original):
+                    raise ValueError("live text no longer matches expected_original")
+                previous = tag.find_previous_sibling()
+                if previous is not None and previous.name in _HEADING_TAGS:
+                    raise ValueError("a heading is already in front of this block")
+                heading = soup.new_tag(f"h{change.level}")
+                heading.string = change.heading
+                tag.insert_before(heading)
+            elif change.action == "split_list":
+                if tag.name not in {"ul", "ol"}:
+                    raise ValueError("target is not a list")
+                groups = menu_items[i]
+                if any(item is None for group in groups for item in group):
+                    raise ValueError("one or more list item ids were not found")
+                resolved = [item for group in groups for item in group]
+                current = [child for child in tag.find_all(recursive=False) if isinstance(child, Tag)]
+                if len(resolved) != len(current) or any(a is not b for a, b in zip(resolved, current)):
+                    raise ValueError("group item ids do not match the list's current direct items in order")
+                pieces = []
+                for group, items in zip(change.groups, groups):
+                    heading = soup.new_tag(f"h{change.level}")
+                    heading.string = group.label
+                    part = soup.new_tag(tag.name)
+                    part.attrs = {k: v for k, v in tag.attrs.items() if k != "id"}
+                    for item in items:
+                        part.append(item.extract())
+                    pieces += [heading, part]
+                tag.replace_with(*pieces)
+            elif change.action == "stop_autoplay":
+                if tag.name not in {"video", "audio"}:
+                    raise ValueError("target is not a video or audio element")
+                if not tag.has_attr("autoplay"):
+                    raise ValueError("the media does not autoplay")
+                del tag["autoplay"]
+                tag["controls"] = ""
             else:  # defensive if the union grows without renderer support
                 raise ValueError(f"unsupported action '{change.action}'")
         except ValueError as exc:
