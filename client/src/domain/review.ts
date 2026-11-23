@@ -20,6 +20,8 @@ export interface Suggestion {
   title: string;
   /** The part of the page it applies to, such as "Sidebar activity list". */
   location: string;
+  /** The text of the part it changes, so suggestions of the same kind can be told apart. Missing for the whole page. */
+  excerpt?: string;
   summary: string;
   category: Category;
   priority: Priority;

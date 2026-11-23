@@ -472,8 +472,11 @@ p {
   font-size: 13px;
 }
 
-/* Ranked list */
+/* Ranked list: each suggestion is a numbered row */
 .suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 12px 0;
   padding: 0;
   list-style: none;
@@ -484,39 +487,44 @@ p {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 56px;
-  padding: 6px 12px;
-  border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--card);
   text-align: left;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .suggestion-row:hover {
+  border-color: var(--line);
   background: var(--chrome);
 }
 
 .suggestion-row[aria-current='true'] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--ink);
+  background: var(--chrome);
 }
 
 .rank {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
-  font-size: 13px;
+  background: var(--line-soft);
+  color: var(--ink);
+  font-size: 12px;
   font-weight: 700;
 }
 
+/* The open suggestion's number takes the outline's red, so it is easy to match to the page. */
 .suggestion-row[aria-current='true'] .rank {
   background: var(--accent);
+  color: #fff;
 }
 
 .suggestion-row-text {
@@ -524,50 +532,59 @@ p {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.suggestion-row-text strong {
+  font-size: 14px;
 }
 
 .suggestion-row-text small {
   display: flex;
-  align-items: center;
   gap: 6px;
+  min-width: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
-.suggestion-row-text small span {
-  margin-left: 6px;
+/* A long quote is cut with "…" so the priority always stays in view. */
+.row-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+.row-priority {
+  flex: none;
 }
 
-.dot-cognitive {
-  background: var(--cognitive);
+.row-priority::before {
+  content: '· ';
 }
 
-.dot-wcag {
-  background: var(--wcag);
-}
-
-.dot-reading {
-  background: var(--reading);
-}
-
+/* Decision as a small pill: grey while open, green once approved, red once rejected */
 .status {
   flex: none;
-  font-size: 13px;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 700;
 }
 
 .status-approved {
+  border-color: transparent;
+  background: var(--ok-soft);
   color: var(--ok);
 }
 
 .status-rejected {
-  color: var(--accent);
+  border-color: transparent;
+  background: var(--reject-soft);
+  color: var(--reject);
 }
 
 /* Selected suggestion */
