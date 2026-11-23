@@ -1,25 +1,39 @@
+import { useEffect, useRef, type ReactNode } from 'react';
 import { statusOf, type Decisions, type Suggestion } from '../domain/review';
 import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL } from './labels';
 
 interface Props {
   suggestions: Suggestion[];
   decisions: Decisions;
-  selectedId: string;
-  onSelect: (id: string) => void;
+  /** The row that is open, or null when all rows are closed. */
+  selectedId: string | null;
+  /** Called with null when the open row is clicked again, to close it. */
+  onSelect: (id: string | null) => void;
+  /** What to show under the selected row. */
+  renderDetail: (suggestion: Suggestion) => ReactNode;
 }
 
-export function SuggestionList({ suggestions, decisions, selectedId, onSelect }: Props) {
+export function SuggestionList({ suggestions, decisions, selectedId, onSelect, renderDetail }: Props) {
+  const listRef = useRef<HTMLOListElement>(null);
+
+  // Opening a row closes the one above it, which can leave the new row out of view, so bring it back.
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedId]);
+
   return (
-    <ol className="suggestion-list">
+    <ol ref={listRef} className="suggestion-list">
       {suggestions.map((suggestion, index) => {
         const status = statusOf(decisions, suggestion.id);
+        const isSelected = suggestion.id === selectedId;
         return (
           <li key={suggestion.id}>
             <button
               type="button"
               className="suggestion-row"
-              aria-current={suggestion.id === selectedId ? 'true' : undefined}
-              onClick={() => onSelect(suggestion.id)}
+              aria-current={isSelected ? 'true' : undefined}
+              aria-expanded={isSelected}
+              onClick={() => onSelect(isSelected ? null : suggestion.id)}
             >
               <span className="rank" aria-hidden="true">
                 {index + 1}
@@ -34,6 +48,7 @@ export function SuggestionList({ suggestions, decisions, selectedId, onSelect }:
               </span>
               <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>
             </button>
+            {isSelected && renderDetail(suggestion)}
           </li>
         );
       })}

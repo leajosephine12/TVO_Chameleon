@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { capture, validateUrl, ALLOWED_HOSTS } from './capture.js';
 import { createBackendProxy } from './backendProxy.js';
+import { findLessonFrame } from './lessonFrame.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -75,12 +76,24 @@ app.get('/api/jobs/:id', (req, res) => {
     res.json(job);
 });
 
+// Captures made before meta.json recorded the lesson frame: look for it in the saved page, once.
+const lessonFrames = new Map();
+async function lessonFrameOf(id) {
+    if (!lessonFrames.has(id)) {
+        const html = await fs.readFile(path.join(ROOT, id, 'index.html'), 'utf8').catch(() => '');
+        lessonFrames.set(id, findLessonFrame(html));
+    }
+    return lessonFrames.get(id);
+}
+
 app.get('/api/snapshots', async (req, res) => {
     const out = [];
     for (const d of await fs.readdir(ROOT, { withFileTypes: true })) {
         if (!d.isDirectory()) continue;
         try {
-            out.push(JSON.parse(await fs.readFile(path.join(ROOT, d.name, 'meta.json'), 'utf8')));
+            const meta = JSON.parse(await fs.readFile(path.join(ROOT, d.name, 'meta.json'), 'utf8'));
+            if (meta.lessonFrame === undefined) meta.lessonFrame = await lessonFrameOf(d.name);
+            out.push(meta);
         } catch { /* not a finished capture */ }
     }
     out.sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));

@@ -4,9 +4,11 @@ import {
   countByStatus,
   rankSuggestions,
   statusOf,
+  suggestionsInGroup,
   type ReviewSession,
   type ReviewStatus,
   type ReviewVersion,
+  type SuggestionGroup,
 } from '../domain/review';
 import { capitalize } from './labels';
 import { SuggestionDetail } from './SuggestionDetail';
@@ -15,10 +17,17 @@ import { SuggestionList } from './SuggestionList';
 interface Props {
   session: ReviewSession;
   version: ReviewVersion;
-  selectedId: string;
+  /** The suggestion that is open, or null when all of them are closed. */
+  selectedId: string | null;
+  /** The lesson tabs (and whole page) the suggestions are split into. Empty when there is nothing to split. */
+  groups: SuggestionGroup[];
+  activeGroupId: string;
+  /** True while this page's analysis is running. `session` still holds the previous page's review then. */
+  isLoading: boolean;
   error: string | null;
+  onGroupChange: (groupId: string) => void;
   onVersionChange: (versionId: string) => void;
-  onSelect: (suggestionId: string) => void;
+  onSelect: (suggestionId: string | null) => void;
   onDecide: (suggestionId: string, status: ReviewStatus) => void;
   onSeeVisitorView: () => void;
 }
@@ -27,23 +36,30 @@ export function ReviewPanel({
   session,
   version,
   selectedId,
+  groups,
+  activeGroupId,
+  isLoading,
   error,
+  onGroupChange,
   onVersionChange,
   onSelect,
   onDecide,
   onSeeVisitorView,
 }: Props) {
   const { versions, decisions } = session;
-  const suggestions = rankSuggestions(version.suggestions);
-  const counts = countByStatus(suggestions, decisions);
-  const applied = appliedSuggestions(session, version.id).length;
-  const selectedIndex = Math.max(
-    suggestions.findIndex((s) => s.id === selectedId),
-    0,
-  );
-  const selected = suggestions[selectedIndex];
-  const step = (by: number) =>
-    onSelect(suggestions[(selectedIndex + by + suggestions.length) % suggestions.length].id);
+  // The previous page's suggestions are not shown while this page's are being worked out.
+  const allSuggestions = isLoading ? [] : version.suggestions;
+  const counts = countByStatus(allSuggestions, decisions);
+  const applied = isLoading ? 0 : appliedSuggestions(session, version.id).length;
+  // Only the suggestions of the open lesson tab are listed, so the list stays short.
+  const suggestions = rankSuggestions(suggestionsInGroup(allSuggestions, groups, activeGroupId));
+  const selected = suggestions.find((s) => s.id === selectedId);
+  // Opens the suggestion `by` places from the open one, wrapping around at either end of the list.
+  // With none open, forward opens the first and back opens the last.
+  const step = (by: number) => {
+    const index = selected ? suggestions.indexOf(selected) : by > 0 ? -1 : 0;
+    onSelect(suggestions[(index + by + suggestions.length) % suggestions.length].id);
+  };
 
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -70,7 +86,8 @@ export function ReviewPanel({
           >
             <strong>{v.name}</strong>
             <small>
-              {countByStatus(v.suggestions, decisions).approved} of {v.suggestions.length} approved
+              {isLoading ? 0 : countByStatus(v.suggestions, decisions).approved} of{' '}
+              {isLoading ? 0 : v.suggestions.length} approved
             </small>
           </button>
         ))}
@@ -86,28 +103,48 @@ export function ReviewPanel({
             {error}
           </p>
         )}
-        {suggestions.length === 0 ? (
+        {groups.length > 0 && !isLoading && (
+          <div className="group-tabs" role="group" aria-label="Lesson tab">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                className="group-tab"
+                aria-pressed={group.id === activeGroupId}
+                onClick={() => onGroupChange(group.id)}
+              >
+                {group.label}
+                <span className="group-count">{group.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {isLoading ? (
+          <p className="no-suggestions" role="status">
+            Analysing this page. With the language model this can take a few minutes.
+          </p>
+        ) : suggestions.length === 0 ? (
           <p className="no-suggestions">
-            No suggestions for this page yet. They will appear here once the analysis backend provides them.
+            {groups.length > 0
+              ? 'No suggestions for this tab.'
+              : 'No suggestions for this version of the page.'}
           </p>
         ) : (
-          <>
-            <SuggestionList
-              suggestions={suggestions}
-              decisions={decisions}
-              selectedId={selected.id}
-              onSelect={onSelect}
-            />
-            <SuggestionDetail
-              suggestion={selected}
-              position={selectedIndex + 1}
-              total={suggestions.length}
-              status={statusOf(decisions, selected.id)}
-              onDecide={(status) => onDecide(selected.id, status)}
-              onPrevious={() => step(-1)}
-              onNext={() => step(1)}
-            />
-          </>
+          <SuggestionList
+            suggestions={suggestions}
+            decisions={decisions}
+            selectedId={selected?.id ?? null}
+            onSelect={onSelect}
+            renderDetail={(suggestion) => (
+              <SuggestionDetail
+                suggestion={suggestion}
+                status={statusOf(decisions, suggestion.id)}
+                onDecide={(status) => onDecide(suggestion.id, status)}
+                onPrevious={() => step(-1)}
+                onNext={() => step(1)}
+              />
+            )}
+          />
         )}
       </div>
       <footer className="review-footer">

@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { findLessonFrame } from './lessonFrame.js';
 
 export const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || 'tvolearn.com')
     .split(',')
@@ -823,6 +824,8 @@ export async function capture(inputUrl, outRoot, log = () => { }) {
             docHeight: frozen.docHeight,
             assets: resources.size,
             embeds: embedInfo,
+            // The lesson of a learning activity page, which is what gets reviewed. Null on other pages.
+            lessonFrame: findLessonFrame(frozen.html),
             extraFilesFetched: fetchedExtra,
             elements: frozen.elements.length,
             stats: frozen.stats,

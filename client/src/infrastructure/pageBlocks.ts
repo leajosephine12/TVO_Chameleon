@@ -1,5 +1,10 @@
+import type { LessonTab } from '../domain/review';
+
 /** Attribute the capture tool puts on every element of a saved page. It never changes, so it can point at one element. */
 const CAPTURE_ID_ATTRIBUTE = 'data-cid';
+
+/** The tab a block is in, so a suggestion can be shown with the tab it is about. */
+const TAB_PANEL_SELECTOR = '[data-tab-panel]';
 
 /** One block of the analysed page, as the backend names it. */
 export interface PageBlock {
@@ -16,6 +21,8 @@ export interface PageBlock {
   textNodes: string[];
   /** The element's style attribute, or null if it has none. */
   style: string | null;
+  /** The id of the lesson tab the element is in, or null if it is not inside a tab. */
+  tabId: string | null;
 }
 
 export const collapseWhitespace = (text: string): string => text.replace(/\s+/g, ' ').trim();
@@ -80,6 +87,7 @@ export function indexBlocks(html: string): Record<string, PageBlock> {
           text: collapseWhitespace(element.textContent ?? ''),
           textNodes: textNodesOf(element),
           style: element.getAttribute('style'),
+          tabId: element.closest(TAB_PANEL_SELECTOR)?.id || null,
         };
       }
 
@@ -90,4 +98,31 @@ export function indexBlocks(html: string): Record<string, PageBlock> {
   visit(page, false);
 
   return blocks;
+}
+
+/**
+ * The tabs of a captured lesson, in the order the lesson shows them.
+ *
+ * The capture tool marks each tab link with `data-tab-trigger="<panel id>"` and each panel with
+ * `data-tab-panel` (capture.js), because a saved page has no scripts to switch tabs. A trigger without a
+ * matching panel is left out.
+ */
+export function readLessonTabs(html: string): LessonTab[] {
+  const page = new DOMParser().parseFromString(html, 'text/html');
+  const panelIds = new Set(Array.from(page.querySelectorAll(TAB_PANEL_SELECTOR), (panel) => panel.id));
+  const orderOf = (trigger: Element) => Number(trigger.getAttribute('data-tab-order') ?? Infinity);
+
+  const tabs = new Map<string, LessonTab>();
+  Array.from(page.querySelectorAll('[data-tab-trigger]'))
+    .sort((a, b) => orderOf(a) - orderOf(b))
+    .forEach((trigger) => {
+      const id = trigger.getAttribute('data-tab-trigger') ?? '';
+      if (panelIds.has(id) && !tabs.has(id)) {
+        tabs.set(id, {
+          id,
+          label: collapseWhitespace(trigger.textContent ?? '') || id,
+        });
+      }
+    });
+  return Array.from(tabs.values());
 }

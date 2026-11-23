@@ -70,6 +70,8 @@ npm start
 The server only accepts connections from this computer. To reach it from elsewhere, set `APP_PASSWORD`
 (which also listens on every interface) or set `HOST` yourself, for example `HOST=0.0.0.0`.
 
+A learning activity page (one with a single lesson frame) is captured and reviewed as the lesson alone, without the TVO site around it. Course and collection pages, which have no single lesson, are still shown whole.
+
 Open http://localhost:3000, paste a TVO Learn link and press "Capture page". A capture can take a few minutes.
 
 For client development, run `npm start` in the repository root and `npm run dev` in `client/`

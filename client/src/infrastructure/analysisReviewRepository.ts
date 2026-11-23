@@ -1,7 +1,11 @@
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
-import type { ReviewedPage, ReviewVersion, Suggestion } from '../domain/review';
-import { indexBlocks, normalizeHtml } from './pageBlocks';
-import { isPageWide, suggestionsFromRecommendations } from './recommendationSuggestions';
+import { standardLessonTabs, type ReviewedPage, type ReviewVersion, type Suggestion } from '../domain/review';
+import { indexBlocks, normalizeHtml, readLessonTabs } from './pageBlocks';
+import {
+  isPageWide,
+  stableRecommendationIds,
+  suggestionsFromRecommendations,
+} from './recommendationSuggestions';
 
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
 const STUB_PAGE = '<html><head></head><body><p>Text</p></body></html>';
@@ -55,14 +59,37 @@ export function createAnalysisReviewRepository(
       }),
     );
 
-    // Ids are only unique within one analysis, and decisions are kept for all pages together.
+    const lessonTabs = standardLessonTabs(readLessonTabs(html));
+    const knownTabIds = new Set(lessonTabs.map((tab) => tab.id));
+
+    // Decisions are kept for all pages together and must survive a new analysis of the same page, so each
+    // id is the page plus an id built from what the recommendation is (see stableRecommendationIds).
+    const stableIds = stableRecommendationIds(recommendations);
+    // A block in a panel with no tab link has no tab to show it under, so it counts as whole-page.
     const suggestions = suggestionsFromRecommendations(recommendations, indexBlocks(html), pageCss).map(
       (s) => ({
         ...s,
-        id: `${page.url}#${s.id}`,
+        id: `${page.url}#${stableIds.get(s.id) ?? s.id}`,
+        tabId: s.tabId && knownTabIds.has(s.tabId) ? s.tabId : null,
       }),
     );
-    return { targetFrame, suggestions, modelError };
+    return { targetFrame, lessonTabs, suggestions, modelError };
+  }
+
+  /**
+   * What the analysis found for each page, kept for as long as the app is open. The language model can take
+   * minutes, so going back to a page that was already analysed must not run it again.
+   */
+  const analyses = new Map<string, ReturnType<typeof analysePage>>();
+  function analysisOf(page: ReviewedPage) {
+    let analysis = analyses.get(page.url);
+    if (!analysis) {
+      analysis = analysePage(page);
+      analyses.set(page.url, analysis);
+      // A failed analysis (the backend was down) is not kept, so the next visit tries again.
+      analysis.catch(() => analyses.delete(page.url));
+    }
+    return analysis;
   }
 
   /** Puts what the analysis found (or why there is none) into the version the backend analyses for. */
@@ -76,13 +103,21 @@ export function createAnalysisReviewRepository(
       const base = await fallback.loadSession(page);
       if (page.url === samplePage.url) return base;
 
-      const blankVersions = base.versions.map((v) => ({ ...v, suggestions: [] }));
+      const blankVersions = base.versions.map((v) => ({
+        ...v,
+        suggestions: [],
+      }));
       try {
-        const { targetFrame, suggestions, modelError } = await analysePage(page);
+        const { targetFrame, lessonTabs, suggestions, modelError } = await analysisOf(page);
         const note = modelError
           ? `The language model step failed (${modelError}), so only the rule-based findings are shown.`
           : '';
-        return { ...base, targetFrame, versions: withAnalysis(blankVersions, suggestions, note) };
+        return {
+          ...base,
+          targetFrame,
+          lessonTabs,
+          versions: withAnalysis(blankVersions, suggestions, note),
+        };
       } catch (error) {
         // Without the backend the page can still be looked at, so say what is missing instead of failing.
         const reason = error instanceof Error ? error.message : 'unknown error';
