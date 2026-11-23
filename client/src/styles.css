@@ -300,6 +300,9 @@ p {
 /* Plain buttons in the preview bar share one look: Full screen and, for visitors, Back to review. */
 .fullscreen-button,
 .back-to-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 36px;
   padding: 4px 14px;
   border: 1px solid var(--line);
@@ -1050,25 +1053,60 @@ p {
   color: var(--muted);
 }
 
-/* Narrow screens: stack the page and the panel, and scroll as one. */
+/* Narrow screens (iPad portrait, phones): the page on top and the review below it as a sheet, each scrolling
+   on its own inside the screen. The app itself never scrolls, so opening a suggestion never moves it. */
 @media (max-width: 900px) {
-  .app {
-    height: auto;
-    min-height: 100vh;
-    min-height: 100dvh;
-  }
-
   .workspace {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 45fr) minmax(0, 55fr);
+    gap: 10px;
+    padding: 0 8px;
   }
 
-  .preview iframe {
-    flex: none;
-    height: 70vh;
-    height: 70dvh;
+  .workspace-visitor {
+    grid-template-rows: minmax(0, 1fr);
+    padding-bottom: 8px;
   }
 
-  .review-scroll {
-    overflow: visible;
+  .review-panel {
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -6px 20px rgb(31 41 51 / 8%);
+  }
+}
+
+/* Phones: drop what the small screen cannot fit and the reviewer does not need there. */
+@media (max-width: 600px) {
+  .app-header {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  /* The name stays for screen readers, as the page's heading; the logo shows it is the same app.
+     Button words do the same where an icon says enough. */
+  .app-header h1,
+  .label-wide-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .view-as > span,
+  .page-picker-date,
+  .address {
+    display: none;
+  }
+
+  .page-picker {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  /* Visitor is one tap away in the top bar, so the footer keeps only the counts. */
+  .visitor-button {
+    display: none;
   }
 }

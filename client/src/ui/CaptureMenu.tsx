@@ -112,7 +112,8 @@ export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
         >
           <path d="M12 5v14M5 12h14" />
         </svg>
-        {running ? 'Capturing…' : 'Capture a page'}
+        {/* On phones only the + shows; the words stay for screen readers. */}
+        <span className="label-wide-only">{running ? 'Capturing…' : 'Capture a page'}</span>
       </button>
       {isOpen && (
         <section id="capture-popover" className="capture-popover" aria-label="Capture a page">

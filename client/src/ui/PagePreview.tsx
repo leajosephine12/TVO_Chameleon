@@ -118,7 +118,21 @@ export function PagePreview({
         {controls}
         {canFullScreen && (
           <button type="button" className="fullscreen-button" onClick={toggleFullScreen}>
-            {isFullScreen ? 'Exit full screen' : 'Full screen'}
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+            {/* On phones only the icon shows; the words stay for screen readers. */}
+            <span className="label-wide-only">{isFullScreen ? 'Exit full screen' : 'Full screen'}</span>
           </button>
         )}
       </div>
