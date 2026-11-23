@@ -282,36 +282,118 @@ p {
   background: #fff;
 }
 
-/* Version tabs */
-.version-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 12px 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.version-tabs button {
-  flex: 1 1 0;
+/* Panel header: the version switch and how much of it has been reviewed */
+.panel-header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-height: 44px;
-  margin-bottom: -1px;
-  padding: 6px 12px;
-  border: 2px solid var(--ink);
-  border-bottom: 0;
-  border-radius: 8px 8px 0 0;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.version-switch {
+  position: relative;
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
   background: var(--chrome);
-  text-align: left;
 }
 
-.version-tabs button[aria-selected='true'] {
-  background: var(--card);
+/* One highlight for the whole switch, moved to the chosen version, so the change is a slide, not a jump. */
+.version-highlight {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--version-count));
+  border-radius: 8px;
+  background: var(--ink);
+  transform: translateX(calc(100% * var(--version-index)));
+  transition: transform 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
-.version-tabs small {
+.version-switch button {
+  position: relative;
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  transition: color 0.2s;
+}
+
+.version-switch button[aria-selected='true'] {
+  color: #fff;
+}
+
+.version-switch button:focus-visible {
+  outline-offset: -3px;
+}
+
+.version-count {
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgb(31 41 51 / 8%);
   font-size: 12px;
+}
+
+.version-switch button[aria-selected='true'] .version-count {
+  background: rgb(255 255 255 / 20%);
+}
+
+.review-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-progress-text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.review-progress-text span {
+  color: var(--muted);
+}
+
+.review-progress-bar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line-soft);
+}
+
+.review-progress-bar span {
+  transition: width 0.3s;
+}
+
+.bar-approved {
+  background: var(--ok);
+}
+
+.bar-rejected {
+  background: var(--reject);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .version-highlight,
+  .review-progress-bar span {
+    transition: none;
+  }
 }
 
 /* Panel content */
@@ -325,13 +407,6 @@ p {
 .version-note {
   color: var(--muted);
   font-size: 13px;
-}
-
-.applied {
-  margin-top: 6px;
-  color: var(--ok);
-  font-size: 13px;
-  font-weight: 700;
 }
 
 /* Lesson tabs: one list of suggestions per tab */
