@@ -18,6 +18,26 @@ interface Props {
   controls: ReactNode;
 }
 
+/**
+ * Scrolls the preview so the element sits in the middle of it. Unlike `scrollIntoView`, this moves only
+ * the preview: on a narrow screen the app itself scrolls too, and it must not jump to the preview each
+ * time a suggestion is opened. The element can be inside a lesson frame within the previewed page.
+ */
+function scrollToCentre(previewDoc: Document, element: Element): void {
+  const previewWindow = previewDoc.defaultView;
+  if (!previewWindow) return;
+  const box = element.getBoundingClientRect();
+  // Add the offset of each frame between the element and the preview, to get its place in the preview.
+  let top = box.top;
+  for (let frameWindow = element.ownerDocument.defaultView; frameWindow && frameWindow !== previewWindow;) {
+    const frame = frameWindow.frameElement;
+    if (!frame) return;
+    top += frame.getBoundingClientRect().top;
+    frameWindow = frame.ownerDocument.defaultView;
+  }
+  previewWindow.scrollBy({ top: top - (previewWindow.innerHeight - box.height) / 2 });
+}
+
 /** The reviewed page in a browser-style frame. Scripts stay off inside it, like in a captured page. */
 export function PagePreview({
   url,
@@ -71,9 +91,14 @@ export function PagePreview({
 
   // A captured lesson has no scripts, so its tabs are links to "#<panel id>" and the browser shows the panel
   // that is the target of the address. Setting the address switches the tab, like clicking the link.
+  // `replace` keeps the switch out of the browser history, so Back still leaves the app instead of
+  // stepping through lesson tabs. The address is made whole first: a bare "#action" would be read against
+  // this app's address, not the lesson's, and load the app into the preview.
   useEffect(() => {
     const frameWindow = targetDoc?.defaultView;
-    if (tabId && frameWindow && frameWindow.location.hash !== `#${tabId}`) frameWindow.location.hash = tabId;
+    if (tabId && frameWindow && frameWindow.location.hash !== `#${tabId}`) {
+      frameWindow.location.replace(new URL(`#${tabId}`, frameWindow.location.href).href);
+    }
   }, [targetDoc, tabId]);
 
   // Clicking a tab inside the lesson changes the address too, so the review panel follows it.
@@ -93,10 +118,9 @@ export function PagePreview({
   useEffect(() => (doc ? fitEmbeddedFrames(doc) : undefined), [doc]);
 
   useEffect(() => {
-    if (targetDoc && highlightSelector) {
-      targetDoc.querySelector('[data-chameleon-highlight]')?.scrollIntoView({ block: 'center' });
-    }
-  }, [targetDoc, highlightSelector]);
+    const outlined = highlightSelector ? targetDoc?.querySelector('[data-chameleon-highlight]') : null;
+    if (outlined && doc) scrollToCentre(doc, outlined);
+  }, [doc, targetDoc, highlightSelector]);
 
   return (
     <section ref={previewRef} className="preview" aria-label="Page preview">
