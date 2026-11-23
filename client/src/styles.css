@@ -166,37 +166,59 @@ p {
   font-size: 12px;
 }
 
-/* Two-way switch */
-.segmented {
+/* Switches: a row of buttons where one is chosen. One dark highlight slides under the chosen button
+   (see useSlidingHighlight), the same way in every switch: View as, Page shown and the page version. */
+.segmented,
+.version-switch {
+  position: relative;
   display: inline-flex;
   flex: none;
-  border: 2px solid var(--ink);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--card);
-  color: var(--ink);
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--chrome);
 }
 
-.segmented button {
-  min-height: 36px;
+.switch-highlight {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  transition:
+    transform 0.28s cubic-bezier(0.3, 0.7, 0.2, 1),
+    width 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.segmented button,
+.version-switch button {
+  position: relative; /* above the highlight */
+  min-height: 34px;
   padding: 4px 14px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+  transition: color 0.2s;
 }
 
-.segmented button[aria-pressed='true'] {
-  background: var(--ink);
+.segmented button[aria-pressed='true'],
+.version-switch button[aria-selected='true'] {
   color: #fff;
 }
 
-.segmented button:focus-visible {
-  outline-offset: -5px;
+.segmented button:focus-visible,
+.version-switch button:focus-visible {
+  outline-offset: -3px;
 }
 
-.segmented button[aria-pressed='true']:focus-visible {
-  outline-color: #fff;
+@media (prefers-reduced-motion: reduce) {
+  .switch-highlight {
+    transition: none;
+  }
 }
 
 /* Layout */
@@ -292,29 +314,10 @@ p {
 }
 
 .version-switch {
-  position: relative;
   display: flex;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--chrome);
-}
-
-/* One highlight for the whole switch, moved to the chosen version, so the change is a slide, not a jump. */
-.version-highlight {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc((100% - 6px) / var(--version-count));
-  border-radius: 8px;
-  background: var(--ink);
-  transform: translateX(calc(100% * var(--version-index)));
-  transition: transform 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
 .version-switch button {
-  position: relative;
   flex: 1 1 0;
   display: inline-flex;
   align-items: center;
@@ -322,21 +325,7 @@ p {
   gap: 8px;
   min-height: 38px;
   padding: 4px 12px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
   font-size: 14px;
-  font-weight: 700;
-  transition: color 0.2s;
-}
-
-.version-switch button[aria-selected='true'] {
-  color: #fff;
-}
-
-.version-switch button:focus-visible {
-  outline-offset: -3px;
 }
 
 .version-count {
@@ -390,7 +379,6 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .version-highlight,
   .review-progress-bar span {
     transition: none;
   }
@@ -423,18 +411,28 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 36px;
-  padding: 4px 6px;
-  border: 2px solid var(--ink);
-  border-radius: 8px;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
   background: var(--card);
-  font-size: 12px;
+  color: var(--ink);
+  font-size: 12.5px;
   font-weight: 700;
   white-space: nowrap;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.group-tab:hover {
+  border-color: var(--muted);
 }
 
 .group-tab[aria-pressed='true'] {
+  border-color: var(--ink);
   background: var(--ink);
   color: #fff;
 }
@@ -455,13 +453,18 @@ p {
 }
 
 .group-count {
-  min-width: 18px;
-  padding: 0 5px;
+  min-width: 20px;
+  padding: 0 6px;
   border-radius: 999px;
   background: var(--chrome);
   color: var(--ink);
   font-size: 11px;
   text-align: center;
+}
+
+.group-tab[aria-pressed='true'] .group-count {
+  background: rgb(255 255 255 / 20%);
+  color: #fff;
 }
 
 .review-scroll .error {

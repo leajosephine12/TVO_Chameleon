@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   countByStatus,
   rankSuggestions,
@@ -12,6 +12,7 @@ import {
 import { capitalize } from './labels';
 import { SuggestionDetail } from './SuggestionDetail';
 import { SuggestionList } from './SuggestionList';
+import { useSlidingHighlight } from './useSlidingHighlight';
 
 interface Props {
   session: ReviewSession;
@@ -54,7 +55,8 @@ export function ReviewPanel({
   const reviewed = versionCounts.approved + versionCounts.rejected;
   const percentOf = (count: number) =>
     allSuggestions.length === 0 ? '0%' : `${(count / allSuggestions.length) * 100}%`;
-  const versionIndex = versions.indexOf(version);
+  // The highlight slides under the chosen version, like the other switches in the app.
+  const versionSwitch = useSlidingHighlight(versions.indexOf(version));
   // Only the suggestions of the open lesson tab are listed, so the list stays short.
   const suggestions = rankSuggestions(suggestionsInGroup(allSuggestions, groups, activeGroupId));
   const selected = suggestions.find((s) => s.id === selectedId);
@@ -77,15 +79,14 @@ export function ReviewPanel({
   return (
     <section className="review-panel" aria-label="Review">
       <div className="panel-header">
-        {/* The highlight slides under the chosen version, so the switch reads as one control. */}
         <div
           className="version-switch"
           role="tablist"
           aria-label="Page version"
           onKeyDown={onTabKey}
-          style={{ '--version-count': versions.length, '--version-index': versionIndex } as CSSProperties}
+          ref={versionSwitch.containerRef}
         >
-          <span className="version-highlight" aria-hidden="true" />
+          <span className="switch-highlight" aria-hidden="true" style={versionSwitch.highlightStyle} />
           {versions.map((v) => (
             <button
               key={v.id}
