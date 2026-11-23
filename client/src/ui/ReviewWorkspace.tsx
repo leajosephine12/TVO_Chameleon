@@ -10,8 +10,9 @@ import {
   type ReviewedPage,
 } from '../domain/review';
 import { AppHeader, type ViewAs } from './AppHeader';
-import { CaptureBar } from './CaptureBar';
+import { CaptureMenu } from './CaptureMenu';
 import { capitalize } from './labels';
+import { PagePicker } from './PagePicker';
 import { PagePreview } from './PagePreview';
 import { ReviewPanel } from './ReviewPanel';
 import { SegmentedControl } from './SegmentedControl';
@@ -94,18 +95,14 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
 
   return (
     <div className="app">
-      <AppHeader viewAs={viewAs} onViewAsChange={setViewAs} />
-      {!isVisitor && (
-        <CaptureBar
-          samplePage={samplePage}
-          page={page}
-          captures={captures}
-          serverReachable={serverReachable}
-          progress={progress}
-          onCapture={startCapture}
-          onPageChange={setPage}
-        />
-      )}
+      <AppHeader viewAs={viewAs} onViewAsChange={setViewAs}>
+        {!isVisitor && (
+          <>
+            <PagePicker samplePage={samplePage} page={page} captures={captures} onPageChange={setPage} />
+            <CaptureMenu serverReachable={serverReachable} progress={progress} onCapture={startCapture} />
+          </>
+        )}
+      </AppHeader>
       <main className={isVisitor ? 'workspace workspace-visitor' : 'workspace'}>
         <PagePreview
           url={page.url}
