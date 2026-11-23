@@ -3,6 +3,15 @@ import { standardLessonTabs, type ReviewedPage, type ReviewVersion, type Suggest
 import { indexBlocks, normalizeHtml, readLessonTabs } from './pageBlocks';
 import { isPageWide, suggestionsFromRecommendations } from './recommendationSuggestions';
 
+/**
+ * What reviewers read when part of the analysis is missing. The technical reason (an unset model name, a
+ * refused connection) means nothing to a reviewer, so it goes to the browser console for developers instead.
+ */
+export const MODEL_UNAVAILABLE_NOTE =
+  'Wording suggestions are missing because the language model could not be reached. The rule-based suggestions are shown.';
+export const ANALYSIS_UNAVAILABLE_NOTE =
+  'Suggestions could not be loaded for this page because the analysis service did not answer. You can still view the page.';
+
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
 const STUB_PAGE = '<html><head></head><body><p>Text</p></body></html>';
 
@@ -103,9 +112,8 @@ export function createAnalysisReviewRepository(
       }));
       try {
         const { targetFrame, lessonTabs, suggestions, modelError } = await analysisOf(page);
-        const note = modelError
-          ? `The language model step failed (${modelError}), so only the rule-based findings are shown.`
-          : '';
+        if (modelError) console.warn(`Language model step failed: ${modelError}`);
+        const note = modelError ? MODEL_UNAVAILABLE_NOTE : '';
         return {
           ...base,
           targetFrame,
@@ -114,10 +122,14 @@ export function createAnalysisReviewRepository(
         };
       } catch (error) {
         // Without the backend the page can still be looked at, so say what is missing instead of failing.
-        const reason = error instanceof Error ? error.message : 'unknown error';
+        console.warn('The analysis could not be run:', error);
+        // Every version is missing its suggestions then, so each one says so, whichever tab is open.
         return {
           ...base,
-          versions: withAnalysis(blankVersions, [], `The analysis could not be run: ${reason}`),
+          versions: blankVersions.map((v) => ({
+            ...v,
+            note: `${v.note} ${ANALYSIS_UNAVAILABLE_NOTE}`.trim(),
+          })),
         };
       }
     },
