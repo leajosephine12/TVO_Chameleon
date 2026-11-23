@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Recommendation } from '../domain/analysis';
 import { indexBlocks } from './pageBlocks';
-import { describeElement, suggestionsFromRecommendations } from './recommendationSuggestions';
+import {
+  describeElement,
+  stableRecommendationIds,
+  suggestionsFromRecommendations,
+} from './recommendationSuggestions';
 
 function recommendation(overrides: Partial<Recommendation>): Recommendation {
   return {
@@ -153,5 +157,47 @@ describe('describeElement', () => {
 
   it('uses a neutral name for a tag it does not know', () => {
     expect(describeElement('custom-widget')).toBe('Text on the page');
+  });
+});
+
+describe('stableRecommendationIds', () => {
+  const italic = recommendation({
+    id: 'r1',
+    block_id: 'i-1',
+    type: 'italic_text',
+    original: '<i>a</i>',
+    suggestion: '<b>a</b>',
+  });
+  const rewrite = recommendation({
+    id: 'r2',
+    block_id: 'p-3',
+    type: 'long_sentence',
+    original: 'Long.',
+    suggestion: 'Short.',
+  });
+
+  it('gives a recommendation the same id when the backend numbers it differently', () => {
+    const first = stableRecommendationIds([italic, rewrite]);
+    const second = stableRecommendationIds([
+      { ...rewrite, id: 'r1' },
+      { ...italic, id: 'r2' },
+    ]);
+
+    expect(second.get('r2')).toBe(first.get('r1'));
+    expect(second.get('r1')).toBe(first.get('r2'));
+  });
+
+  it('gives different changes to the same block different ids', () => {
+    const other = { ...rewrite, id: 'r3', suggestion: 'Shorter.' };
+
+    const ids = stableRecommendationIds([rewrite, other]);
+
+    expect(ids.get('r2')).not.toBe(ids.get('r3'));
+  });
+
+  it('numbers identical recommendations so each keeps its own decision', () => {
+    const ids = stableRecommendationIds([rewrite, { ...rewrite, id: 'r9' }]);
+
+    expect(ids.get('r9')).toBe(`${ids.get('r2')}~2`);
   });
 });

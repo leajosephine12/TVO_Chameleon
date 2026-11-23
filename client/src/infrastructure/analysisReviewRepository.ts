@@ -1,7 +1,11 @@
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
 import { standardLessonTabs, type ReviewedPage, type ReviewVersion, type Suggestion } from '../domain/review';
 import { indexBlocks, normalizeHtml, readLessonTabs } from './pageBlocks';
-import { isPageWide, suggestionsFromRecommendations } from './recommendationSuggestions';
+import {
+  isPageWide,
+  stableRecommendationIds,
+  suggestionsFromRecommendations,
+} from './recommendationSuggestions';
 
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
 const STUB_PAGE = '<html><head></head><body><p>Text</p></body></html>';
@@ -58,12 +62,14 @@ export function createAnalysisReviewRepository(
     const lessonTabs = standardLessonTabs(readLessonTabs(html));
     const knownTabIds = new Set(lessonTabs.map((tab) => tab.id));
 
-    // Ids are only unique within one analysis, and decisions are kept for all pages together.
+    // Decisions are kept for all pages together and must survive a new analysis of the same page, so each
+    // id is the page plus an id built from what the recommendation is (see stableRecommendationIds).
+    const stableIds = stableRecommendationIds(recommendations);
     // A block in a panel with no tab link has no tab to show it under, so it counts as whole-page.
     const suggestions = suggestionsFromRecommendations(recommendations, indexBlocks(html), pageCss).map(
       (s) => ({
         ...s,
-        id: `${page.url}#${s.id}`,
+        id: `${page.url}#${stableIds.get(s.id) ?? s.id}`,
         tabId: s.tabId && knownTabIds.has(s.tabId) ? s.tabId : null,
       }),
     );
