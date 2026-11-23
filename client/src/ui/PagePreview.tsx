@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Patch } from '../domain/review';
 import { applyPatches } from './applyPatches';
 import { fitEmbeddedFrames } from './fitEmbeddedFrames';
+import { placeOutlineTag } from './outlineTag';
 
 interface Props {
   url: string;
@@ -10,6 +11,8 @@ interface Props {
   /** The `src` of the frame the patches apply to, or null to apply them to the page itself. */
   targetFrame: string | null;
   highlightSelector: string | null;
+  /** The tag shown on the outline, such as "2 · Italic text", or null for none. */
+  highlightLabel: string | null;
   /** The lesson tab to show, or null to leave the lesson on the tab it is on. */
   tabId: string | null;
   /** Called with the id a tab link inside the lesson switched to, such as "action". */
@@ -25,6 +28,7 @@ export function PagePreview({
   patches,
   targetFrame,
   highlightSelector,
+  highlightLabel,
   tabId,
   onLessonTabChange,
   controls,
@@ -88,6 +92,15 @@ export function PagePreview({
   useEffect(() => {
     if (targetDoc) applyPatches(targetDoc, patches, highlightSelector);
   }, [targetDoc, patches, highlightSelector]);
+
+  // After the patches, because applying them again takes the tag away with everything else the review added.
+  useEffect(
+    () =>
+      targetDoc && highlightSelector && highlightLabel
+        ? placeOutlineTag(targetDoc, highlightLabel)
+        : undefined,
+    [targetDoc, patches, highlightSelector, highlightLabel],
+  );
 
   // Embedded lessons are sized to their content at the width shown here, so none of it is cut off.
   useEffect(() => (doc ? fitEmbeddedFrames(doc) : undefined), [doc]);

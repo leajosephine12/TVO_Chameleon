@@ -6,6 +6,7 @@ import { pageFromCapture, type PageCapture } from '../domain/capture';
 import {
   appliedSuggestions,
   groupSuggestions,
+  rankSuggestions,
   suggestionsInGroup,
   type ReviewedPage,
 } from '../domain/review';
@@ -87,9 +88,10 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
 
   // Nothing is open until the reviewer picks a suggestion, so a new page opens on the whole list.
   const selectedId = selectedIds[version.id] ?? null;
-  const selected = isLoading
-    ? undefined
-    : suggestionsInGroup(version.suggestions, groups, activeGroupId).find((s) => s.id === selectedId);
+  // The list as the panel shows it, so the tag on the page carries the same number as the suggestion's row.
+  const listedSuggestions = rankSuggestions(suggestionsInGroup(version.suggestions, groups, activeGroupId));
+  const selected = isLoading ? undefined : listedSuggestions.find((s) => s.id === selectedId);
+  const highlightLabel = selected ? `${listedSuggestions.indexOf(selected) + 1} · ${selected.title}` : null;
   // The lesson switches to the tab the reviewer is looking at. The whole-page group is not a tab.
   const previewTabId = session.lessonTabs.some((tab) => tab.id === activeGroupId) ? activeGroupId : null;
 
@@ -110,6 +112,7 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
           patches={patches}
           targetFrame={session.targetFrame}
           highlightSelector={isVisitor ? null : (selected?.targetSelector ?? null)}
+          highlightLabel={isVisitor ? null : highlightLabel}
           tabId={previewTabId}
           onLessonTabChange={onLessonTabChange}
           controls={
