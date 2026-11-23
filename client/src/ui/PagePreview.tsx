@@ -71,9 +71,14 @@ export function PagePreview({
 
   // A captured lesson has no scripts, so its tabs are links to "#<panel id>" and the browser shows the panel
   // that is the target of the address. Setting the address switches the tab, like clicking the link.
+  // `replace` keeps the switch out of the browser history, so Back still leaves the app instead of
+  // stepping through lesson tabs. The address is made whole first: a bare "#action" would be read against
+  // this app's address, not the lesson's, and load the app into the preview.
   useEffect(() => {
     const frameWindow = targetDoc?.defaultView;
-    if (tabId && frameWindow && frameWindow.location.hash !== `#${tabId}`) frameWindow.location.hash = tabId;
+    if (tabId && frameWindow && frameWindow.location.hash !== `#${tabId}`) {
+      frameWindow.location.replace(new URL(`#${tabId}`, frameWindow.location.href).href);
+    }
   }, [targetDoc, tabId]);
 
   // Clicking a tab inside the lesson changes the address too, so the review panel follows it.
