@@ -1,42 +1,55 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { CaptureProgress } from '../application/useCaptures';
+import { captureSteps, type StepState } from './captureSteps';
 
-const LOG_LINES = 2;
-
-const STATUS_TEXT: Partial<Record<CaptureProgress['status'], string>> = {
-  running: 'Capturing…',
-  done: 'Captured.',
+const STEP_ICON_LABEL: Record<StepState, string> = {
+  done: 'Done',
+  current: 'In progress',
+  waiting: 'Not started',
+  failed: 'Failed',
 };
 
-interface LogProps {
-  lines: string[];
-  expanded: boolean;
-  onToggle: () => void;
-}
+/** The capture's progress as a few plain steps. The full log stays one click away for when something breaks. */
+function CaptureProgressView({ progress }: { progress: CaptureProgress }) {
+  const [showLog, setShowLog] = useState(false);
+  const steps = captureSteps(progress);
+  if (steps.length === 0) return null;
 
-/** Collapsed, the log shows only its newest lines, so progress stays visible. */
-function CaptureLog({ lines, expanded, onToggle }: LogProps) {
-  const canCollapse = lines.length > LOG_LINES;
-  const collapsed = canCollapse && !expanded;
   return (
-    <>
-      <ul id="capture-log" className={collapsed ? 'capture-log collapsed' : 'capture-log'}>
-        {(collapsed ? lines.slice(-LOG_LINES) : lines).map((line, index) => (
-          <li key={index}>{line}</li>
+    <div className="capture-progress">
+      <ol className="capture-steps" role="status">
+        {steps.map((step) => (
+          <li key={step.label} className={`capture-step step-${step.state}`}>
+            <span className="step-icon" role="img" aria-label={STEP_ICON_LABEL[step.state]} />
+            {step.label}
+          </li>
         ))}
-      </ul>
-      {canCollapse && (
-        <button
-          type="button"
-          className="log-toggle"
-          aria-expanded={expanded}
-          aria-controls="capture-log"
-          onClick={onToggle}
-        >
-          {expanded ? 'Show less' : 'Show more'}
-        </button>
+      </ol>
+      {progress.error && <p className="error">{progress.error}</p>}
+      {progress.status === 'running' && (
+        <p className="capture-note">This takes a few minutes. You can close this and keep reviewing.</p>
       )}
-    </>
+      {progress.log.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="log-toggle"
+            aria-expanded={showLog}
+            aria-controls="capture-log"
+            onClick={() => setShowLog((shown) => !shown)}
+          >
+            {showLog ? 'Hide log' : 'Show log'}
+          </button>
+          {showLog && (
+            <ul id="capture-log" className="capture-log">
+              {progress.log.map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -53,7 +66,6 @@ interface Props {
 export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [url, setUrl] = useState('');
-  const [logExpanded, setLogExpanded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const running = progress.status === 'running';
 
@@ -76,7 +88,6 @@ export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    setLogExpanded(false);
     onCapture(url.trim());
   };
 
@@ -84,7 +95,7 @@ export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
     <div className="capture-menu" ref={menuRef}>
       <button
         type="button"
-        className="capture-button"
+        className="capture-open-button"
         aria-expanded={isOpen}
         aria-controls="capture-popover"
         onClick={() => setIsOpen((open) => !open)}
@@ -127,15 +138,7 @@ export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
               The capture server is not running, so only the sample page is available.
             </p>
           )}
-          <div role="status">
-            {progress.error && <p className="error">{progress.error}</p>}
-            {STATUS_TEXT[progress.status] && <p className="capture-status">{STATUS_TEXT[progress.status]}</p>}
-          </div>
-          <CaptureLog
-            lines={progress.log}
-            expanded={logExpanded}
-            onToggle={() => setLogExpanded((expanded) => !expanded)}
-          />
+          <CaptureProgressView progress={progress} />
         </section>
       )}
     </div>

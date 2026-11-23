@@ -689,6 +689,100 @@ h3.eyebrow {
   flex: 1;
 }
 
+/* The top-bar button that opens the pop-up: light, so the bar has no heavy dark block in it */
+.capture-open-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.capture-open-button:hover,
+.capture-open-button[aria-expanded='true'] {
+  background: var(--chrome);
+}
+
+/* Capture progress: a short list of steps */
+.capture-progress {
+  margin-top: 14px;
+}
+
+.capture-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius-control);
+  background: var(--chrome);
+  list-style: none;
+}
+
+.capture-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.step-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--card) center / 10px no-repeat;
+}
+
+.step-waiting {
+  color: var(--muted);
+}
+
+.step-current {
+  font-weight: 700;
+}
+
+.step-current .step-icon {
+  border-color: var(--ink);
+  border-right-color: transparent;
+  animation: step-spin 0.9s linear infinite;
+}
+
+.step-done .step-icon {
+  border-color: var(--ok);
+  background-color: var(--ok);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5L20 7'/%3E%3C/svg%3E");
+}
+
+.step-failed {
+  color: var(--reject);
+  font-weight: 700;
+}
+
+.step-failed .step-icon {
+  border-color: var(--reject);
+  background-color: var(--reject);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
+}
+
+@keyframes step-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-current .step-icon {
+    animation: none;
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -735,7 +829,6 @@ h3.eyebrow {
 }
 
 .capture-note,
-.capture-status,
 .capture-popover .error {
   margin-top: 8px;
 }
@@ -744,21 +837,14 @@ h3.eyebrow {
   color: var(--muted);
 }
 
-.capture-status {
-  font-weight: 700;
-}
-
 .capture-log {
-  margin: 0;
+  max-height: 160px;
+  margin: 8px 0 0;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
   color: var(--muted);
-}
-
-.capture-log.collapsed li {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
 }
 
 .log-toggle {
@@ -768,7 +854,7 @@ h3.eyebrow {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
-  color: var(--wcag);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 700;
 }
