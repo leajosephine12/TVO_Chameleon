@@ -109,7 +109,7 @@ def _evidence_from_sources(recs: list[Recommendation]) -> list[Recommendation]:
         ids = list(dict.fromkeys(_RULE_ID.findall(r.evidence)))  # de-duplicate, keep order
         sources = list(dict.fromkeys(by_id[i].source for i in ids if i in by_id))
         if sources:
-            r = r.model_copy(update={"evidence": f"{', '.join(ids)} / {'; '.join(sources)}"})
+            r = r.model_copy(update={"evidence": f"{', '.join(ids)}: {'; '.join(sources)}"})
         out.append(r)
     return out
 

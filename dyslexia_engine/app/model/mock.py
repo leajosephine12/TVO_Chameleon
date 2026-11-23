@@ -70,7 +70,12 @@ _ADAPTED_UI = {
     ]
 }
 
-MOCK_RESPONSES = {"text_recs": _TEXT, "layout_recs": _LAYOUT, "adapted_ui": _ADAPTED_UI}
+MOCK_RESPONSES = {
+    "text_recs": _TEXT,
+    "level2_text_recs": _TEXT,  # Level 2 uses the same text recommendations
+    "layout_recs": _LAYOUT,
+    "adapted_ui": _ADAPTED_UI,
+}
 
 
 def mock_response(task: str) -> str:

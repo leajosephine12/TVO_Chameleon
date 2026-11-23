@@ -27,7 +27,7 @@ def test_analyze_then_adapt():
 
     for x in recs:
         x["status"] = "accepted"
-    r2 = client.post("/adapted", json={"html": fuHTML, "recommendations": recs})
+    r2 = client.post("/adapted", json={"html": HTML, "recommendations": recs})
     assert r2.status_code == 200
     out = r2.json()
     assert out["applied"]

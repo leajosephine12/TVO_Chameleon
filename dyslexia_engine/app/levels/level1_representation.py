@@ -80,9 +80,9 @@ def analyze_level1(html: str) -> list[Recommendation]:
                 evidence=evidence_for("L1.1.7"), severity="low")
         elif tag.name == "u":
             add(block_id=block_id, type="underline_text", original=str(tag),
-                suggestion=tag.decode_contents(),
-                rationale="Underlines make words look closer together. Use bold for emphasis instead.",
-                evidence=evidence_for("L1.1.7"), severity="low")
+            suggestion=f"<strong>{tag.decode_contents()}</strong>",
+            rationale="Underlines make words look closer together. Use bold for emphasis instead.",
+            evidence=evidence_for("L1.1.7"), severity="low")
         if tag.has_attr("style") and _BAD_INLINE.search(tag["style"]):
             style = tag["style"]
             ids = []
@@ -144,10 +144,8 @@ def apply_level1(html: str, recommendations: list[Recommendation]) -> AdaptResul
         elif edited:                      # user rewrote the replacement HTML
             fresh = BeautifulSoup(r.suggestion, "html.parser")
             tag.replace_with(*list(fresh.contents))
-        elif r.type == "italic_text":
+        elif r.type in ("italic_text", "underline_text"):
             tag.name = "strong"
-        else:                             # underline_text
-            tag.unwrap()
         applied.append(r.id)
 
     # page-wide rules: merge with anything applied in an earlier round

@@ -18,35 +18,33 @@ Run: uv run uvicorn main:app --port 8001
 """
 import os
 from pathlib import Path
+import logging
 
 from accessibility_metrics import analyze_text, structure_checks
 from accessibility_metrics.judgement import TEXT_JUDGEMENT, VISION_JUDGEMENT
+
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app import adaptation_engine as dys_engine
+from app.levels.level1_representation import _index_blocks
 from app.schemas import Recommendation
 
-try:  # same .env the engine uses for level 2 (same approach as run_demo_l1and2.py)
-    from dotenv import load_dotenv
+from app.model.client import ModelCallError
+from app.model.config import ModelConfigError
+from app.model.runner import ModelOutputError
 
-    load_dotenv(Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env")
-except ImportError:
-    pass
+from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+_env_path = Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env"
+if not load_dotenv(_env_path):
+    logger.warning(".env not loaded from %s; Level 2 settings may be missing", _env_path)
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
 
 app = FastAPI(title="chameleon-backend")
-
-
-def _index_blocks(soup: BeautifulSoup) -> dict:
-    """Block ids '<tag>-<n>' (n counts per tag, in document order). Same html in -> same ids."""
-    index, counters = {}, {}
-    for tag in soup.find_all(True):
-        counters[tag.name] = counters.get(tag.name, 0) + 1
-        index[f"{tag.name}-{counters[tag.name]}"] = tag
-    return index
 
 
 def visible_text(tag) -> str:
@@ -138,8 +136,9 @@ def analyze(req: AnalyzeRequest):
     elif blocks:
         try:
             recs = dys_engine.analyze(2, blocks=blocks, max_recommendations=MAX_RECS).recommendations
-        except Exception as e:  # model/config problem: level 1-style recs still work, UI can show this
-            model_errors.append(f"{type(e).__name__}: {e}")
+        except (ModelConfigError, ModelCallError, ModelOutputError) as e:
+            model_errors.append(str(e))
+            recs = []
 
     return {"level": req.level, "recommendations": recs,
             "model_error": "; ".join(model_errors) or None, "findings": findings}
@@ -148,9 +147,8 @@ def analyze(req: AnalyzeRequest):
 @app.post("/adapted")
 def adapted(req: AdaptRequest):
     _check_level(req.level)
-    # The dys_engine treats "pending" as accepted and keeps "denied" denied.
-    recs = [r for r in req.recommendations if r.status in ("accepted", "edited", "pending")]
-
+    # Only apply what the user accepted (or edited); pending and denied are left alone.
+    recs = [r for r in req.recommendations if r.status in ("accepted", "edited")]
     if req.level == 1:
         result = dys_engine.apply(1, html=req.html, accepted=recs)
         return {
@@ -167,28 +165,29 @@ def adapted(req: AdaptRequest):
     blocks = _text_blocks(index)
     if not blocks:
         raise HTTPException(status_code=422, detail="no prose text found for level 2")
-    try:
-        result = dys_engine.apply(2, blocks=blocks, accepted=recs)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"level 2 failed: {type(e).__name__}: {e}")
+    result = dys_engine.apply(2, blocks=blocks, accepted=recs)
 
     data = _to_dict(result)
     before = {b["block_id"]: b["text"] for b in blocks}
     changed = []
+    not_written = []
     for nb in _find_block_list(data) or []:
         bid = nb["block_id"]
         after = nb.get("text") or nb.get("adapted_text") or nb.get("new_text") or ""
         tag = index.get(bid)
         if tag is None or not after or after == before.get(bid):
             continue
-        tag.clear()  # inline markup inside a rewritten block is replaced by plain text
-        tag.append(after)
+        if tag.find(True):  # has links, bold, etc.: keep the markup, don't overwrite
+            not_written.append({"block_id": bid, "reason": "block contains links or inline formatting"})
+            continue
+        tag.string = after
         changed.append(bid)
+
+    skipped = (data.get("skipped", []) if isinstance(data, dict) else []) + not_written
 
     return {
         "adapted_html": str(soup),
         "changed_blocks": changed,
         "applied": data.get("applied") if isinstance(data, dict) else None,
-        "skipped": data.get("skipped", []) if isinstance(data, dict) else [],
-        "result": data,
+        "skipped": skipped,
     }
