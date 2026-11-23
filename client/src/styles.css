@@ -1,15 +1,21 @@
-/* Base styles. Colours are defined once, here. */
+/* Base styles. Colours, corners and type are defined once, here. */
 :root {
+  /* Neutrals: dark blue-grey ink for text and the main buttons, soft greys for the page and borders. */
   --ink: #1f2933;
-  --muted: #5b6675;
-  --page: #dfe4ec;
+  --muted: #5b6472;
+  --page: #eceef2;
   --card: #ffffff;
-  --chrome: #f1f3f7;
-  --line: #cbd2dc;
+  --chrome: #f3f4f7;
+  --line: #d9dde4;
+  --line-soft: #e3e6eb;
+  /* The red that outlines a change on the reviewed page. */
   --accent: #b93a0f;
   --accent-soft: #fdf1e9;
-  --ok: #0b5a4f;
-  --ok-soft: #e1f2ee;
+  /* Approved is green, rejected is red, so the two never look alike. */
+  --ok: #0b6b5c;
+  --ok-soft: #e3f3ee;
+  --reject: #a3260b;
+  --reject-soft: #fbe9e5;
   --warn-soft: #fbe7dd;
   --review-soft: #fdf3d3;
   --review: #6b4e00;
@@ -17,6 +23,8 @@
   --wcag: #2f5fc4;
   --reading: #8a4fbf;
   --focus: #1d4ed8;
+  --radius-card: 14px;
+  --radius-control: 10px;
 }
 
 * {
@@ -27,11 +35,14 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--page);
+  /* Inter when it is installed, otherwise the system's own interface font. No font is downloaded. */
   font:
-    15px/1.45 system-ui,
+    15px/1.5 Inter,
+    system-ui,
     -apple-system,
     'Segoe UI',
     sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button {
@@ -154,7 +165,7 @@ p {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--card);
 }
@@ -599,7 +610,7 @@ h3.eyebrow {
   margin: 0 12px 12px;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--card);
   font-size: 13px;
 }
