@@ -31,6 +31,7 @@ class Context:
     judgement: dict[str, str] = field(default_factory=dict)
     baseline: list[dict] = field(default_factory=list)  # every finding on the unchanged page, uncapped (for the re-measure gate)
     applied_html: str | None = None  # the page after the proposal being checked (set by the applies_cleanly check)
+    after_findings: list[dict] | None = None  # that page, measured once and shared by the two re-measure checks
 
     def text(self, block_id: str) -> str:
         return block_text(self.index[block_id])

@@ -4,7 +4,7 @@ The model proposes a typed page change (the GenUI spec in dyslexia_engine/app/mo
 Only replace_text is shaped differently here: the model rewrites just the flagged words, and the code builds the
 block's full new text from that (so the model never has to retype the whole block).
 """
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Union, get_args
 
 from app.model.adapted_ui_spec import (
     AddButtonLabel, AddHeadingBefore, AddSectionHeading, ExplainTerm, GroupMenuItems, PlainText, SetAltText,
@@ -31,6 +31,10 @@ ModelChange = Annotated[
     ],
     Field(discriminator="action"),
 ]
+
+
+# action name -> the class that holds its fields, so the planner can drop keys an action does not have
+ACTION_CLASSES = {cls.model_fields["action"].default: cls for cls in get_args(get_args(ModelChange)[0])}
 
 
 class Proposal(BaseModel):

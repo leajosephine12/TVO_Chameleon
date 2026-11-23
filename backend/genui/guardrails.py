@@ -300,12 +300,19 @@ def applies_cleanly(p: Proposal, ctx: Context, change) -> list[str]:
     return []
 
 
+def _after(ctx: Context) -> list[dict]:
+    """The changed page, measured once per proposal (the page can be a megabyte of HTML, so this is the slow step)."""
+    if ctx.after_findings is None:
+        ctx.after_findings = measure(ctx.applied_html, uncapped=True)
+    return ctx.after_findings
+
+
 def improves_metric(p: Proposal, ctx: Context, change) -> list[str]:
     """The re-measure gate: measure the changed page with the same code that found the problem."""
     metric = p.metric_id
     if metric in _CSS_METRICS or POLICY[metric].scope == "judgement" or ctx.applied_html is None:
         return []  # CSS is checked by css_policy (no browser here); judgement metrics have no code measurement
-    after = measure(ctx.applied_html, uncapped=True)
+    after = _after(ctx)
     before = ctx.baseline
     if metric in FORMULA_KEYS:
         was, now = _score(before, metric, p.block_id), _score(after, metric, p.block_id)
@@ -324,7 +331,7 @@ def improves_metric(p: Proposal, ctx: Context, change) -> list[str]:
 def no_regression(p: Proposal, ctx: Context, change) -> list[str]:
     if ctx.applied_html is None or p.metric_id in _CSS_METRICS:
         return []
-    after = measure(ctx.applied_html, uncapped=True)
+    after = _after(ctx)
     worse = [m for m in _REGRESSION_METRICS if _count(after, m) > _count(ctx.baseline, m)]
     return [f"the change makes {', '.join(worse)} worse." ] if worse else []
 
@@ -342,7 +349,7 @@ def check_proposal(p: Proposal, ctx: Context) -> tuple[object | None, list[str]]
         change = build_change(p, ctx)
     except (ValueError, ValidationError) as e:
         return None, [_first_line(e)]
-    ctx.applied_html = None
+    ctx.applied_html = ctx.after_findings = None
     for check in PROPOSAL_CHECKS:
         problems = check(p, ctx, change)
         if problems:

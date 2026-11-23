@@ -224,3 +224,31 @@ def test_two_accepted_changes_on_one_block_do_not_both_apply():
     second = first.model_copy(update={"id": "r2", "change": {**first.change, "text": "Open the guide"}})
     out = apply_general(HTML, [first, second])
     assert out["applied"] == ["r1"] and out["skipped"] == ["r2"]
+
+
+def test_extra_keys_a_model_adds_to_a_change_do_not_cost_the_proposal():
+    padded = p("T3", "p-1", {"action": "replace_text", "original": LONG, "value": GOOD_REWRITE,
+                             "expected_original": LONG, "block_id": "p-1", "note": "shorter"})
+    padded_label = p("J5", "a-1", {"action": "set_link_text", "text": "Read the budget guide", "level": 2, "why": "clear"})
+    result = plan(FakeModel(reply(padded, padded_label)))
+    assert [r.type for r in result.recommendations] == ["T3", "J5"] and result.rejected == []
+
+
+def test_a_reply_that_is_cut_off_still_gives_the_proposals_that_arrived_whole():
+    whole = json.dumps(GOOD[2])
+    second = json.dumps(GOOD[3])
+    cut = '{"proposals": [' + whole + ", " + second + ', {"metric_id": "J14", "block_id": "button-1", "rationale": "Vag'
+    model = FakeModel(cut)
+    result = plan(model)
+    assert [r.type for r in result.recommendations] == ["J5", "J12"]
+    assert len(model.calls) == 1  # no retry: something usable came back
+
+
+def test_junk_after_the_json_does_not_lose_the_proposals():
+    reply_with_junk = reply(GOOD[2]) + "\n\nLet me know if you want more changes."
+    assert [r.type for r in plan(FakeModel(reply_with_junk)).recommendations] == ["J5"]
+
+
+def test_a_reply_with_no_complete_proposal_is_still_an_error():
+    with pytest.raises(ModelOutputError):
+        plan(FakeModel('{"proposals": [{"metric_id": "J5", "block_id'))
