@@ -587,51 +587,99 @@ p {
   color: var(--reject);
 }
 
-/* Selected suggestion */
+/* The open suggestion: its row and its details form one card with a dark border. */
+.suggestion-item-open {
+  overflow: hidden;
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+}
+
+.suggestion-item-open .suggestion-row {
+  border: 0;
+  border-radius: 0;
+}
+
 .suggestion-detail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 4px 0 10px;
-  padding: 14px 16px;
-  border: 2px solid var(--accent);
-  border-radius: 10px;
+  gap: 12px;
+  padding: 14px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--card);
 }
 
-.suggestion-detail > p:not(.eyebrow) {
+.detail-summary {
   font-size: 14px;
 }
 
-.suggestion-detail .what-changes {
-  font-weight: 700;
+/* Now and After side by side; After is tinted green because it is what approving gives. */
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.eyebrow {
+.change-side {
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--chrome);
+}
+
+.change-after {
+  border-color: #cfe7dd;
+  background: var(--ok-soft);
+}
+
+.change-side h4 {
+  margin-bottom: 4px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.eyebrow span,
-h3.eyebrow {
-  text-transform: uppercase;
+.change-after h4 {
+  color: var(--ok);
+}
+
+.change-text {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.emphasis-italic {
+  font-style: italic;
+}
+
+.emphasis-bold {
+  font-weight: 700;
+}
+
+.emphasis-underline {
+  text-decoration: underline;
+}
+
+.change-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 2px 10px;
-  border-radius: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
   background: var(--chrome);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -641,8 +689,8 @@ h3.eyebrow {
 }
 
 .chip-fail {
-  background: var(--warn-soft);
-  color: var(--accent);
+  background: var(--reject-soft);
+  color: var(--reject);
 }
 
 .chip-review {
@@ -650,45 +698,59 @@ h3.eyebrow {
   color: var(--review);
 }
 
-.priority-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--ink);
-}
-
-.priority-high {
-  width: 24px;
-}
-
-.priority-medium {
-  width: 16px;
-}
-
-.priority-low {
+.dot {
   width: 8px;
+  height: 8px;
+  border-radius: 2px;
 }
 
+.dot-cognitive {
+  background: var(--cognitive);
+}
+
+.dot-wcag {
+  background: var(--wcag);
+}
+
+.dot-reading {
+  background: var(--reading);
+}
+
+.suggestion-detail .evidence {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* Decision buttons: Approve is white with green, Reject is white with grey; a made decision fills in. */
 .decision {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .decide,
 .step {
-  min-height: 48px;
-  border-radius: 8px;
+  min-height: 44px;
+  border-radius: var(--radius-control);
   background: var(--card);
   font-weight: 700;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .decide {
   flex: 1;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--line);
 }
 
 .approve {
-  border-color: var(--ok);
+  border: 2px solid var(--ok);
   color: var(--ok);
+}
+
+.approve:hover {
+  background: var(--ok-soft);
 }
 
 .approve[aria-pressed='true'] {
@@ -696,36 +758,28 @@ h3.eyebrow {
   color: #fff;
 }
 
+.reject:hover {
+  border-color: var(--reject);
+  color: var(--reject);
+}
+
 .reject[aria-pressed='true'] {
-  background: var(--ink);
-  color: #fff;
+  border-color: var(--reject);
+  background: var(--reject-soft);
+  color: var(--reject);
 }
 
 .step {
   flex: none;
-  width: 48px;
-  border: 2px solid var(--ink);
-  font-size: 22px;
-  line-height: 1;
-}
-
-.comparison {
+  width: 44px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.comparison > div {
-  padding: 8px 10px;
+  place-items: center;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
+  color: var(--ink);
 }
 
-.comparison h4 {
-  margin-bottom: 2px;
-  color: var(--muted);
-  font-size: 12px;
+.step:hover {
+  background: var(--chrome);
 }
 
 /* Panel footer */
@@ -960,11 +1014,6 @@ h3.eyebrow {
   border: 1px dashed var(--line);
   border-radius: 10px;
   color: var(--muted);
-}
-
-.suggestion-detail > p.evidence {
-  color: var(--muted);
-  font-size: 13px;
 }
 
 /* Narrow screens: stack the page and the panel, and scroll as one. */

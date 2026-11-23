@@ -39,7 +39,7 @@ export function SuggestionList({ suggestions, decisions, selectedId, onSelect, r
         const status = statusOf(decisions, suggestion.id);
         const isSelected = suggestion.id === selectedId;
         return (
-          <li key={suggestion.id}>
+          <li key={suggestion.id} className={isSelected ? 'suggestion-item-open' : undefined}>
             <button
               type="button"
               className="suggestion-row"
