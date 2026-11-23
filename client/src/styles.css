@@ -115,6 +115,31 @@ p {
   font-weight: 700;
 }
 
+/* Visitor view: a short note in the top bar, and the version, change count and way back above the page */
+.visitor-note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.visitor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.visitor-controls-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.applied-count {
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 /* The page under review, as a select with a "Page" label inside its box */
 .page-picker {
   flex: 1 1 360px;
@@ -272,13 +297,22 @@ p {
   white-space: nowrap;
 }
 
-.fullscreen-button {
-  padding: 5px 12px;
+/* Plain buttons in the preview bar share one look: Full screen and, for visitors, Back to review. */
+.fullscreen-button,
+.back-to-review {
+  min-height: 36px;
+  padding: 4px 14px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   background: var(--card);
+  color: var(--ink);
   font-size: 13px;
-  cursor: pointer;
+  font-weight: 700;
+}
+
+.fullscreen-button:hover,
+.back-to-review:hover {
+  background: var(--chrome);
 }
 
 .fullscreen-button:focus-visible {

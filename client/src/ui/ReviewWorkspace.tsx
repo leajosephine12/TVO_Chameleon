@@ -12,11 +12,11 @@ import {
 } from '../domain/review';
 import { AppHeader, type ViewAs } from './AppHeader';
 import { CaptureMenu } from './CaptureMenu';
-import { capitalize } from './labels';
 import { PagePicker } from './PagePicker';
 import { PagePreview } from './PagePreview';
 import { ReviewPanel } from './ReviewPanel';
 import { SegmentedControl } from './SegmentedControl';
+import { VisitorControls } from './VisitorControls';
 
 type PreviewMode = 'approved' | 'original';
 
@@ -98,7 +98,9 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
   return (
     <div className="app">
       <AppHeader viewAs={viewAs} onViewAsChange={setViewAs}>
-        {!isVisitor && (
+        {isVisitor ? (
+          <span className="visitor-note">Previewing what visitors see</span>
+        ) : (
           <>
             <PagePicker samplePage={samplePage} page={page} captures={captures} onPageChange={setPage} />
             <CaptureMenu serverReachable={serverReachable} progress={progress} onCapture={startCapture} />
@@ -108,7 +110,7 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
       <main className={isVisitor ? 'workspace workspace-visitor' : 'workspace'}>
         <PagePreview
           url={page.url}
-          addressLabel={`${page.label} · ${version.shortName} version`}
+          addressLabel={isVisitor ? page.label : `${page.label} · ${version.shortName} version`}
           patches={patches}
           targetFrame={session.targetFrame}
           highlightSelector={isVisitor ? null : (selected?.targetSelector ?? null)}
@@ -117,14 +119,12 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
           onLessonTabChange={onLessonTabChange}
           controls={
             isVisitor ? (
-              <SegmentedControl
-                label="Page version"
-                value={version.id}
-                onChange={setActiveVersionId}
-                options={session.versions.map((v) => ({
-                  value: v.id,
-                  label: capitalize(v.shortName),
-                }))}
+              <VisitorControls
+                versions={session.versions}
+                versionId={version.id}
+                onVersionChange={setActiveVersionId}
+                appliedCount={appliedSuggestions(session, version.id).length}
+                onBackToReview={() => setViewAs('team')}
               />
             ) : (
               <SegmentedControl
