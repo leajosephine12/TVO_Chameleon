@@ -143,6 +143,7 @@ function toSuggestion(rec: Recommendation, patch: Patch, block: PageBlock | unde
     before: rec.original,
     after: rec.suggestion || '(removed)',
     targetSelector: block?.selector ?? null,
+    tabId: isPageWide ? null : (block?.tabId ?? null),
     patches: [patch],
   };
 }
@@ -211,3 +212,35 @@ export function suggestionsFromGeneralRecommendations(
 
 /** True when the recommendation needs the backend's CSS instead of an element on the page. */
 export const isPageWide = (rec: Recommendation): boolean => PAGE_WIDE_TYPES.includes(rec.type);
+
+/** A short, fixed fingerprint of a piece of text (32-bit FNV-1a, as hex). */
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * An id for each recommendation that stays the same when the page is analysed again.
+ *
+ * The backend numbers recommendations in the order it finds them ("r1", "r2", ...). That order changes
+ * when the model answers differently, so a decision saved under "r3" could land on another suggestion.
+ * This id is built from what the recommendation is (its type, its block, and the change it makes), so a
+ * saved decision always finds the same suggestion. Identical recommendations get "~2", "~3" and so on.
+ *
+ * @returns the stable id for each backend id
+ */
+export function stableRecommendationIds(recommendations: Recommendation[]): Map<string, string> {
+  const timesSeen = new Map<string, number>();
+  return new Map(
+    recommendations.map((rec) => {
+      const base = `${rec.type}:${rec.block_id}:${fingerprint(`${rec.original}\u0000${rec.suggestion}`)}`;
+      const seen = (timesSeen.get(base) ?? 0) + 1;
+      timesSeen.set(base, seen);
+      return [rec.id, seen === 1 ? base : `${base}~${seen}`];
+    }),
+  );
+}

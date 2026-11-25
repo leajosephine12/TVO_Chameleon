@@ -82,7 +82,7 @@ The evidence line on each card is built from the finding (metric, what was measu
 never written by the model, so it cannot cite something that was not measured.
 
 If every proposal fails, the model is told why and asked again (`MODEL_MAX_RETRIES`). A proposal that fails is
-reported in `guardrails.rejected` of the `/analyze` response with its reasons.
+reported in `guardrails.rejected` of the `/analyze_general` response with its reasons.
 
 ## Settings
 

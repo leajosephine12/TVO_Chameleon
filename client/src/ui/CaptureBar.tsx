@@ -50,6 +50,8 @@ interface Props {
   progress: CaptureProgress;
   onCapture: (url: string) => void;
   onPageChange: (page: ReviewedPage) => void;
+  /** A page that finished capturing after the reviewer moved on, offered here instead of opened. */
+  capturedPageToOpen: ReviewedPage | null;
 }
 
 export function CaptureBar({
@@ -60,6 +62,7 @@ export function CaptureBar({
   progress,
   onCapture,
   onPageChange,
+  capturedPageToOpen,
 }: Props) {
   const [url, setUrl] = useState('');
   const [logExpanded, setLogExpanded] = useState(false);
@@ -126,7 +129,19 @@ export function CaptureBar({
       )}
       <div role="status">
         {progress.error && <p className="error">{progress.error}</p>}
-        {STATUS_TEXT[progress.status] && <p className="capture-status">{STATUS_TEXT[progress.status]}</p>}
+        {STATUS_TEXT[progress.status] && (
+          <p className="capture-status">
+            {STATUS_TEXT[progress.status]}
+            {progress.status === 'done' && capturedPageToOpen && (
+              <>
+                {' '}
+                <button type="button" className="log-toggle" onClick={() => onPageChange(capturedPageToOpen)}>
+                  Open {capturedPageToOpen.label}
+                </button>
+              </>
+            )}
+          </p>
+        )}
       </div>
       <CaptureLog
         lines={progress.log}

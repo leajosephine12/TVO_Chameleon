@@ -58,7 +58,7 @@ MODEL_MOCK=1 uv run uvicorn main:app --port 8001
 ```
 
 Then, from the repository root, start the capture server, which also serves the client and forwards
-`/backend/analyze` and `/backend/adapted` to the backend (set `BACKEND_URL` if it is not on port 8001):
+`/backend/analyze`, `/backend/adapted` and their `_general` counterparts to the backend (set `BACKEND_URL` if it is not on port 8001):
 
 ```
 npm install
@@ -124,6 +124,8 @@ Ollama / RunPod work the same way — see `dyslexia_engine/.env.example` and
 |---|---|
 | `POST /analyze {html}` | rule-engine recs + model text recs, all status `pending` |
 | `POST /adapted {html, recommendations}` | applies only `accepted`/`edited` ones, returns adapted HTML + injected CSS |
+| `POST /analyze_general {html, url?, render?}` | general accessibility recs (measured layout fixes + model proposals), with a preview for each |
+| `POST /adapted_general {html, recommendations}` | applies the `accepted`/`edited` general recs; not called by the client yet |
 
 The frontend keeps accept/deny/edit state itself (it already does) and sends the
 final statuses to `/adapted` — the backend is stateless. Send the **same HTML** to

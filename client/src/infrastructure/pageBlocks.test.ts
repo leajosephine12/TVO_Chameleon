@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { indexBlocks, normalizeHtml } from './pageBlocks';
+import { indexBlocks, normalizeHtml, readLessonTabs } from './pageBlocks';
 
 describe('indexBlocks', () => {
   it('names each captured element by its tag and position, like the backend', () => {
@@ -56,5 +56,43 @@ describe('normalizeHtml', () => {
     const once = normalizeHtml(sloppy);
 
     expect(normalizeHtml(once)).toBe(once);
+  });
+});
+
+const TABBED_LESSON = `<body>
+  <nav>
+    <a href="#action" data-tab-trigger="action" data-tab-order="1">Action</a>
+    <a href="#mindsOn" data-tab-trigger="mindsOn" data-tab-order="0">Minds  On</a>
+    <a href="#gone" data-tab-trigger="gone" data-tab-order="2">No panel</a>
+  </nav>
+  <section id="mindsOn" data-tab-panel="0"><p data-cid="a">Intro</p></section>
+  <section id="action" data-tab-panel="0"><p data-cid="b">Do this</p></section>
+  <p data-cid="c">Outside the tabs</p>
+</body>`;
+
+describe('readLessonTabs', () => {
+  it('lists the tabs in the order the lesson shows them, with tidy labels', () => {
+    expect(readLessonTabs(TABBED_LESSON)).toEqual([
+      { id: 'mindsOn', label: 'Minds On' },
+      { id: 'action', label: 'Action' },
+    ]);
+  });
+
+  it('leaves out a tab link that has no panel', () => {
+    expect(readLessonTabs(TABBED_LESSON).map((tab) => tab.id)).not.toContain('gone');
+  });
+
+  it('finds no tabs in a page without them', () => {
+    expect(readLessonTabs('<body><p>Plain page</p></body>')).toEqual([]);
+  });
+});
+
+describe('indexBlocks tabs', () => {
+  it('says which lesson tab a block is in, or null outside the tabs', () => {
+    const blocks = indexBlocks(TABBED_LESSON);
+
+    expect(blocks['p-1'].tabId).toBe('mindsOn');
+    expect(blocks['p-2'].tabId).toBe('action');
+    expect(blocks['p-3'].tabId).toBeNull();
   });
 });

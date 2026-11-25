@@ -1,8 +1,10 @@
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
-import type { ReviewedPage, ReviewVersion, Suggestion } from '../domain/review';
-import { indexBlocks, normalizeHtml } from './pageBlocks';
+import type { Recommendation } from '../domain/analysis';
+import { standardLessonTabs, type ReviewedPage, type ReviewVersion, type Suggestion } from '../domain/review';
+import { indexBlocks, normalizeHtml, readLessonTabs } from './pageBlocks';
 import {
   isPageWide,
+  stableRecommendationIds,
   suggestionsFromGeneralRecommendations,
   suggestionsFromRecommendations,
 } from './recommendationSuggestions';
@@ -21,12 +23,43 @@ const DYSLEXIA_VERSION_ID = 'dyslexia';
 interface Found {
   suggestions: Suggestion[];
   note: string;
+  /** True when the analysis could not be run at all, so the next visit to the page should try again. */
+  failed?: boolean;
 }
 
 const notRun = (error: unknown): Found => ({
   suggestions: [],
   note: `The analysis could not be run: ${error instanceof Error ? error.message : 'unknown error'}`,
+  failed: true,
 });
+
+/** What a page's suggestions need besides the change itself: the page they are on and its lesson tabs. */
+interface Placement {
+  pageUrl: string;
+  knownTabIds: Set<string>;
+}
+
+/**
+ * Gives each suggestion its final id and lesson tab.
+ *
+ * Decisions are kept for all pages together and must survive a new analysis of the same page, so each id is
+ * the page plus an id built from what the recommendation is (see stableRecommendationIds). `idPrefix` keeps
+ * the two analyses apart, so a decision on one version never marks a suggestion of the other.
+ * A block in a panel with no tab link has no tab to show it under, so it counts as whole-page.
+ */
+function placed(
+  suggestions: Suggestion[],
+  recommendations: Recommendation[],
+  { pageUrl, knownTabIds }: Placement,
+  idPrefix = '',
+): Suggestion[] {
+  const stableIds = stableRecommendationIds(recommendations);
+  return suggestions.map((s) => ({
+    ...s,
+    id: `${pageUrl}#${idPrefix}${stableIds.get(s.id) ?? s.id}`,
+    tabId: s.tabId && knownTabIds.has(s.tabId) ? s.tabId : null,
+  }));
+}
 
 const fetchText = async (url: string): Promise<string> => {
   const response = await fetch(url);
@@ -57,7 +90,7 @@ export function createAnalysisReviewRepository(
   /** Splits a page URL into the folder it is in, so a frame's relative `src` can be loaded. */
   const folderOf = (pageUrl: string) => pageUrl.slice(0, pageUrl.lastIndexOf('/') + 1);
 
-  async function dyslexiaSuggestions(page: ReviewedPage, html: string): Promise<Found> {
+  async function dyslexiaSuggestions(html: string, placement: Placement): Promise<Found> {
     const { recommendations } = await analysis.analyze(html);
 
     // Page-wide rules are previewed with the CSS the backend would inject for each of them.
@@ -69,28 +102,25 @@ export function createAnalysisReviewRepository(
       }),
     );
 
-    // Ids are only unique within one analysis, and decisions are kept for all pages together.
-    const suggestions = suggestionsFromRecommendations(recommendations, indexBlocks(html), pageCss).map(
-      (s) => ({ ...s, id: `${page.url}#${s.id}` }),
-    );
-    return { suggestions, note: '' };
+    const suggestions = suggestionsFromRecommendations(recommendations, indexBlocks(html), pageCss);
+    return { suggestions: placed(suggestions, recommendations, placement), note: '' };
   }
 
-  async function generalSuggestions(page: ReviewedPage, html: string, htmlUrl: string): Promise<Found> {
+  async function generalSuggestions(html: string, htmlUrl: string, placement: Placement): Promise<Found> {
     const absoluteUrl = new URL(htmlUrl, window.location.origin).href;
     const { recommendations, modelError, layoutError } = await analysis.analyzeGeneral(html, absoluteUrl);
 
-    // Both analyses number from "r1", so the version is part of the id: a decision on one never marks the other.
-    const suggestions = suggestionsFromGeneralRecommendations(recommendations, indexBlocks(html)).map(
-      (s) => ({ ...s, id: `${page.url}#${GENERAL_VERSION_ID}-${s.id}` }),
-    );
+    const suggestions = suggestionsFromGeneralRecommendations(recommendations, indexBlocks(html));
     const notes = [
       modelError &&
         `The language model step failed (${modelError}), so only the measured layout fixes are shown.`,
       layoutError &&
         `Text size, line spacing and line length were not checked, because the backend could not open the page (${layoutError}).`,
     ];
-    return { suggestions, note: notes.filter(Boolean).join(' ') };
+    return {
+      suggestions: placed(suggestions, recommendations, placement, `${GENERAL_VERSION_ID}-`),
+      note: notes.filter(Boolean).join(' '),
+    };
   }
 
   /** Runs both analyses on the same HTML. One failing leaves the other version's suggestions in place. */
@@ -101,11 +131,34 @@ export function createAnalysisReviewRepository(
     // Both the backend and indexBlocks count tags in this exact string, so their block ids always agree.
     const html = normalizeHtml(targetFrame ? await fetchText(htmlUrl) : pageHtml);
 
+    const lessonTabs = standardLessonTabs(readLessonTabs(html));
+    const placement = { pageUrl: page.url, knownTabIds: new Set(lessonTabs.map((tab) => tab.id)) };
     const [general, dyslexia] = await Promise.all([
-      generalSuggestions(page, html, htmlUrl).catch(notRun),
-      dyslexiaSuggestions(page, html).catch(notRun),
+      generalSuggestions(html, htmlUrl, placement).catch(notRun),
+      dyslexiaSuggestions(html, placement).catch(notRun),
     ]);
-    return { targetFrame, found: { [GENERAL_VERSION_ID]: general, [DYSLEXIA_VERSION_ID]: dyslexia } };
+    return {
+      targetFrame,
+      lessonTabs,
+      found: { [GENERAL_VERSION_ID]: general, [DYSLEXIA_VERSION_ID]: dyslexia } as Record<string, Found>,
+    };
+  }
+
+  /**
+   * What the analysis found for each page, kept for as long as the app is open. The language model can take
+   * minutes, so going back to a page that was already analysed must not run it again.
+   */
+  const analyses = new Map<string, ReturnType<typeof analysePage>>();
+  function analysisOf(page: ReviewedPage) {
+    let analysis = analyses.get(page.url);
+    if (!analysis) {
+      analysis = analysePage(page);
+      analyses.set(page.url, analysis);
+      // An analysis that could not be run (the backend was down) is not kept, so the next visit tries again.
+      const forget = () => analyses.delete(page.url);
+      analysis.then(({ found }) => Object.values(found).some((f) => f.failed) && forget(), forget);
+    }
+    return analysis;
   }
 
   /** Puts what each analysis found (or why there is nothing) into its own version. */
@@ -121,10 +174,13 @@ export function createAnalysisReviewRepository(
       const base = await fallback.loadSession(page);
       if (page.url === samplePage.url) return base;
 
-      const blankVersions = base.versions.map((v) => ({ ...v, suggestions: [] }));
+      const blankVersions = base.versions.map((v) => ({
+        ...v,
+        suggestions: [],
+      }));
       try {
-        const { targetFrame, found } = await analysePage(page);
-        return { ...base, targetFrame, versions: withAnalysis(blankVersions, found) };
+        const { targetFrame, lessonTabs, found } = await analysisOf(page);
+        return { ...base, targetFrame, lessonTabs, versions: withAnalysis(blankVersions, found) };
       } catch (error) {
         // Without the captured page there is nothing to analyse, so say what is missing instead of failing.
         const failed = notRun(error);

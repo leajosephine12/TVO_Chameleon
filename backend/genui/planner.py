@@ -26,12 +26,17 @@ from .policy import MAX_CHANGES, NO_LIMITS, UNLIMITED
 from .preview import preview
 from .prompt import build_messages
 from .recommend import to_recommendation
-from .schemas import A11yRecommendation, Proposal
+from .schemas import ACTION_CLASSES, A11yRecommendation, Proposal
 from .standin import standin_caller
 
 log = logging.getLogger("app.model")
 TASK = "genui"
-MAX_PROPOSALS_CHECKED = UNLIMITED if NO_LIMITS else 40  # each one is applied and the page measured again; a runaway reply must not stall the server
+# How many proposals of one reply get the full check. Each one is applied and the whole page is measured again:
+# measured at about 0.3 s on a 127 KB page, 1.0 s on 506 KB and 2.3 s on 1 MB (a captured lesson is about 1 MB).
+# 30 is 2.5 times the default page budget of 12 (A11Y_MAX_CHANGES), which leaves room for proposals that fail a
+# guardrail, and keeps the worst case on a 1 MB page near a minute, small next to a model call that takes minutes.
+# (It was 40 in an earlier commit; the lower number has the measured reason above.)
+MAX_PROPOSALS_CHECKED = UNLIMITED if NO_LIMITS else 30
 
 # Typed changes that carry the block's current text as a precondition. The code sets it from the live block
 # (the model never retypes it), so a change can never be applied to text that has since changed.
@@ -81,11 +86,38 @@ def _tidy_ids(item: dict) -> dict:
     return item
 
 
+def _salvage(reply: str) -> list | None:
+    """The complete objects at the start of a 'proposals' list in a reply that is not valid JSON as a whole
+    (usually because the model ran out of room mid-way). None when there is no list or no complete object."""
+    marker = reply.find('"proposals"')
+    start = reply.find("[", marker if marker >= 0 else 0)
+    if start < 0:
+        return None
+    decoder, items, i = json.JSONDecoder(), [], start + 1
+    while True:
+        while i < len(reply) and reply[i] in " \n\r\t,":
+            i += 1
+        if i >= len(reply) or reply[i] != "{":
+            break
+        try:
+            obj, i = decoder.raw_decode(reply, i)
+        except json.JSONDecodeError:
+            break  # the object that was cut off; everything before it is kept
+        items.append(obj)
+    return items or None
+
+
 def parse_proposals(reply: str, ctx: Context) -> tuple[list[Proposal], list[dict]]:
     """Read the model's reply one proposal at a time, so one malformed proposal does not cost the others.
     Raises json.JSONDecodeError or ValueError when the reply as a whole is unusable."""
-    raw = extract_json(reply)
-    items = raw.get("proposals") if isinstance(raw, dict) else raw
+    try:
+        raw = extract_json(reply)
+        items = raw.get("proposals") if isinstance(raw, dict) else raw
+    except json.JSONDecodeError:
+        items = _salvage(reply)  # cut off or junk at the end: keep the proposals that arrived whole
+        if items is None:
+            raise
+        log.info("task=%s outcome=salvaged: the reply was not valid JSON as a whole, kept its %d complete proposals", TASK, len(items))
     if not isinstance(items, list):
         raise ValueError("The reply has no 'proposals' list.")
     ok, bad = [], []
@@ -102,6 +134,9 @@ def parse_proposals(reply: str, ctx: Context) -> tuple[list[Proposal], list[dict
                     change["block_id"] = item.get("block_id")
                 if change.get("action") in NEEDS_EXPECTED and item.get("block_id") in ctx.index:
                     change["expected_original"] = ctx.text(item["block_id"])
+                cls = ACTION_CLASSES.get(change.get("action"))
+                if cls is not None:  # models add keys the action does not have (the schema forbids extras); keep the rest
+                    item = {**item, "change": {k: v for k, v in change.items() if k in cls.model_fields}}
             ok.append(Proposal.model_validate(item))
         except ValidationError as e:
             bad.append(_entry(item, [f"does not fit the typed change: {_first(e)}"]))
@@ -154,7 +189,8 @@ def plan_changes(
         except (json.JSONDecodeError, ValueError) as e:
             last_problem = f"The reply was not usable ({e})."
             log.info("task=%s attempt=%d/%d model_call=%.2fs outcome=unparseable", TASK, attempt, retries + 1, call_secs)
-            log.info("    the reply began: %s", " ".join(reply.split())[:300])
+            flat = " ".join(reply.split())
+            log.info("    why: %s | the reply began: %s | and ended: %s", e, flat[:200], flat[-120:])
             messages += [{"role": "assistant", "content": reply},
                          {"role": "user", "content": f"{last_problem} Reply again with ONLY the JSON object {{\"proposals\": [...]}}."}]
             continue
