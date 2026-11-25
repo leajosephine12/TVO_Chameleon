@@ -12,10 +12,11 @@ import re
 from pydantic import ValidationError
 
 from .adapted_ui_spec import (
-    MAX_CHANGES, AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
+    AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
     SetAltText, SetButtonLabel, SetLinkText, SetStyle, SkippedRecommendation,
     format_css, parse_css,
 )
+from ..guards import MAX_CHANGES
 from ..schemas import Recommendation
 
 APPROVED = ("accepted", "edited")

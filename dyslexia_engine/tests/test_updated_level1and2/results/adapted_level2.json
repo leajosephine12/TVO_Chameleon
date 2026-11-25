@@ -3,11 +3,11 @@
   "blocks": [
     {
       "block_id": "p-1",
-      "text": "Plants use photosynthesis to turn sunlight into chemical energy."
+      "text": "Plants use photosynthesis to change sunlight into chemical energy."
     },
     {
       "block_id": "p-2",
-      "text": "The phloem then carries the glucose to more parts of the plant, where it is stored."
+      "text": "The phloem then moves the glucose to more parts of the plant, where it is stored."
     },
     {
       "block_id": "p-3",
@@ -23,5 +23,10 @@
     "r2",
     "r3"
   ],
-  "skipped": []
+  "skipped": [
+    {
+      "id": "r4",
+      "reason": "original text not found"
+    }
+  ]
 }

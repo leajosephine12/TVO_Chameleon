@@ -39,7 +39,6 @@ from ..schemas import Recommendation, AnalyzeResult
 from ..model.schemas import RecommendationList
 from ..model.analyze_level2 import analyze_level2_plain_text
 from ..model.schemas import Level2ApplyResult, SkippedRec, TextBlock
-from ..model.guards import MAX_ITEMS, MAX_CHANGES, MAX_ITEM_CHARS, MAX_LABEL_CHARS
 from ..guidelines.level2_plain_text import LEVEL2_GUIDELINES
 
 TASK = "level2_text_recs"
@@ -63,7 +62,7 @@ def analyze_level2(
     Raises ValueError (bad input or unknown rule id), ModelConfigError, ModelCallError, ModelOutputError.
     """
     _validate_input(blocks)
-    findings = analyze_level2_plain_text(blocks)
+    findings = analyze_level2_plain_text(blocks, enabled_rules=enabled_rules)
     recs = generate_text_recommendations(
         blocks,
         findings,
@@ -75,14 +74,6 @@ def analyze_level2(
     )
     return AnalyzeResult(level=2, recommendations=recs, findings=findings)
 
-# vriti's
-def _structural_limits_note() -> str:
-    """The limits the typed page changes enforce, read from the spec so the prompt cannot drift from it."""
-    return (
-        f"\n\nLimits for the structural types: a J5, J11 or J14 label and an S3 heading are one line of at most "
-        f"{MAX_LABEL_CHARS} characters; J12 alt text is at most {MAX_ITEM_CHARS} characters. For J5, J14 and S3, "
-        "'original' is the current text, copied exactly, and is never empty."
-    )
 
 # vriti's
 def _validate_input(blocks: list[dict]) -> None:
@@ -113,6 +104,17 @@ def _evidence_from_sources(recs: list[Recommendation]) -> list[Recommendation]:
         out.append(r)
     return out
 
+def _find_original(text: str, original: str) -> list[re.Match]:
+    """Whole-word, whitespace-tolerant matches of `original` in `text`."""
+    words = original.split()
+    if not words:
+        return []
+    pattern = r"\s+".join(re.escape(w) for w in words)
+    if re.match(r"\w", words[0]):
+        pattern = r"(?<!\w)" + pattern
+    if re.search(r"\w$", words[-1]):
+        pattern += r"(?!\w)"
+    return list(re.finditer(pattern, text))
 
 # vriti's -- internal funciton for testing
 def generate_text_recommendations(
@@ -137,7 +139,7 @@ def generate_text_recommendations(
     _validate_input(blocks)
     config = config or ModelConfig.from_env()
     block_text = {b["block_id"]: b["text"] for b in blocks}
-
+    all_caps_rule_on = enabled_rules is None or "L2.1.5" in enabled_rules
     checks = [check_status_pending]
     if not config.mock:
         # The mock returns a fixed reply that ignores the input, so checks that compare against the
@@ -146,13 +148,13 @@ def generate_text_recommendations(
             partial(check_known_blocks, block_ids=set(block_text)),
             partial(check_original_is_quoted, block_text=block_text),
             partial(check_rationale_numbers, findings=findings),
-            check_meaning_preserved,
+            partial(check_meaning_preserved, skip_all_caps=all_caps_rule_on),
             check_structural_fields,
         ]
         if judgement_checks:
             checks.append(partial(check_judgement_evidence, judgement_ids=set(judgement_checks)))
 
-    instructions = build_level2_instructions(enabled_rules) + _structural_limits_note()
+    instructions = build_level2_instructions(enabled_rules)
     if max_recommendations:  # the cap travels with the call, so the prompt and cap_by_severity agree
         instructions += (
             f"\n- At most {max_recommendations} recommendations: every long sentence first, "
@@ -172,8 +174,9 @@ def generate_text_recommendations(
 def apply_level2(blocks: list[dict], accepted: list[Recommendation]) -> Level2ApplyResult:
     """Swap each accepted recommendation's `original` for its `suggestion`.
 
-    A change is applied only if its block exists and `original` appears exactly once in that
-    block's current text. Anything else goes to `skipped` with a reason. Input blocks are not mutated.
+    A change is applied only if its block exists and `original` appears exactly once as a whole word
+    (whitespace differences ignored) in that block's current text. Anything else goes to `skipped`
+    with a reason. Input blocks are not mutated.
     """
     text = {b["block_id"]: b["text"] for b in blocks}
     applied, skipped = [], []
@@ -181,14 +184,17 @@ def apply_level2(blocks: list[dict], accepted: list[Recommendation]) -> Level2Ap
         if rec.block_id not in text:
             skipped.append(SkippedRec(id=rec.id, reason="unknown block"))
             continue
-        n = text[rec.block_id].count(rec.original) if rec.original else 0
-        if n == 0:
+        current = text[rec.block_id]
+        matches = _find_original(current, rec.original or "")
+        if not matches:
             skipped.append(SkippedRec(id=rec.id, reason="original text not found"))
-        elif n > 1:
+        elif len(matches) > 1:
             skipped.append(SkippedRec(id=rec.id, reason="original text ambiguous"))
         else:
-            text[rec.block_id] = text[rec.block_id].replace(rec.original, rec.suggestion, 1)
+            m = matches[0]
+            text[rec.block_id] = current[:m.start()] + rec.suggestion + current[m.end():]
             applied.append(rec.id)
+
     return Level2ApplyResult(
         blocks=[TextBlock(block_id=b["block_id"], text=text[b["block_id"]]) for b in blocks],
         applied=applied,

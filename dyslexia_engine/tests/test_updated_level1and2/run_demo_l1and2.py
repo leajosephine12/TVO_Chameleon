@@ -5,10 +5,10 @@ Tests if dyslexia_engine/adaptation_engine.py is working correctly
 
 Put this file in the dyslexia_engine/ folder (the one that CONTAINS app/), then run:
 
-    python run_demo.py                 # level 1 + level 2
-    python run_demo.py --level 1       # only level 1 (no model call)
-    python run_demo.py --level 2       # only level 2 (calls the model, needs .env)
-    python run_demo.py --deny 1,3      # deny recommendations 1 and 3 (1-based) to test "denied stays denied"
+    python dyslexia_engine/tests/test_updated_level1and2/run_demo_l1and2.py                 # level 1 + level 2
+    python dyslexia_engine/tests/test_updated_level1and2/run_demo_l1and2.py  --level 1       # only level 1 (no model call)
+    python dyslexia_engine/tests/test_updated_level1and2/run_demo_l1and2.py  --level 2       # only level 2 (calls the model, needs .env)
+    python dyslexia_engine/tests/test_updated_level1and2/run_demo_l1and2.py  --deny 1,3      # deny recommendations 1 and 3 (1-based) to test "denied stays denied"
 
 Make sure to set .env file so that level 2 outputs the right recommendation
 """

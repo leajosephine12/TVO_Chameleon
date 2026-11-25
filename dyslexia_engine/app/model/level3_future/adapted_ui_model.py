@@ -14,7 +14,7 @@ from .adapted_ui_spec import AdaptedUIResult, AdaptedUISpec, ReplaceText, SetSty
 from .adapted_ui import select_usable
 from ..client import call_model
 from ..config import ModelConfig
-from ..guards import numbers_in
+from ..guards import MAX_CHANGES, numbers_in
 from ..prompts import ADAPT_RULES, build_messages
 from ..runner import run_task
 from ..schemas import Recommendation
@@ -27,7 +27,7 @@ Call3Change = Annotated[Union[ReplaceText, SetStyle], Field(discriminator="actio
 
 
 class Call3Spec(BaseModel):
-    changes: list[Call3Change] = Field(max_length=100)
+    changes: list[Call3Change] = Field(max_length=MAX_CHANGES)
 
 INSTRUCTIONS = """\
 You build the adapted version of a web page from the changes a user accepted.

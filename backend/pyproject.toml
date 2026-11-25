@@ -9,7 +9,6 @@ dependencies = [
     "pydantic",
     "dyslexia-engine",
     "accessibility-engine",
-    "python-dotenv>=1.0"
 ]
 
 [tool.uv.sources]

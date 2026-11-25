@@ -29,26 +29,25 @@ from pydantic import BaseModel
 
 from app import adaptation_engine as dys_engine
 from app.levels.level1_representation import _index_blocks
+# the path might be changed in the future but the function is used for sure
+from app.model.level3_future.adapted_renderer import visible_text
 from app.schemas import Recommendation
 
 from app.model.client import ModelCallError
-from app.model.config import ModelConfigError
+from app.model.config import ModelConfigError, load_env_file
 from app.model.runner import ModelOutputError
 
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 _env_path = Path(__file__).resolve().parents[1] / "dyslexia_engine" / ".env"
-if not load_dotenv(_env_path):
-    logger.warning(".env not loaded from %s; Level 2 settings may be missing", _env_path)
+if _env_path.is_file():
+    load_env_file(_env_path)
+else:
+    logger.warning(".env not found at %s; Level 2 settings may be missing", _env_path)
+
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}
-
 app = FastAPI(title="chameleon-backend")
-
-
-def visible_text(tag) -> str:
-    return " ".join(tag.get_text(" ", strip=True).split())
 
 
 def _text_blocks(index: dict) -> list[dict]:
@@ -58,33 +57,6 @@ def _text_blocks(index: dict) -> list[dict]:
         for bid, tag in index.items()
         if tag.name in PROSE_TAGS and visible_text(tag)
     ]
-
-
-def _to_dict(obj):
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump(mode="json")
-    if isinstance(obj, list):
-        return [_to_dict(x) for x in obj]
-    if isinstance(obj, dict):
-        return {k: _to_dict(v) for k, v in obj.items()}
-    return obj
-
-
-def _find_block_list(data):
-    """Find the list of adapted blocks (dicts with block_id) inside a Level 2 result."""
-    if isinstance(data, list) and data and all(isinstance(x, dict) and "block_id" in x for x in data):
-        return data
-    if isinstance(data, dict):
-        for v in data.values():
-            found = _find_block_list(v)
-            if found:
-                return found
-    if isinstance(data, list):
-        for v in data:
-            found = _find_block_list(v)
-            if found:
-                return found
-    return None
 
 
 # Reviewer attention is the budget now, not model speed (the 4 was tuned for local Gemma).
@@ -167,27 +139,30 @@ def adapted(req: AdaptRequest):
         raise HTTPException(status_code=422, detail="no prose text found for level 2")
     result = dys_engine.apply(2, blocks=blocks, accepted=recs)
 
-    data = _to_dict(result)
     before = {b["block_id"]: b["text"] for b in blocks}
     changed = []
-    not_written = []
-    for nb in _find_block_list(data) or []:
-        bid = nb["block_id"]
-        after = nb.get("text") or nb.get("adapted_text") or nb.get("new_text") or ""
-        tag = index.get(bid)
-        if tag is None or not after or after == before.get(bid):
+    skipped_blocks = []
+    for nb in result.blocks:
+        tag = index.get(nb.block_id)
+        if tag is None:
+            skipped_blocks.append({"block_id": nb.block_id, "reason": "block not found in page"})
             continue
-        if tag.find(True):  # has links, bold, etc.: keep the markup, don't overwrite
-            not_written.append({"block_id": bid, "reason": "block contains links or inline formatting"})
+        if not nb.text or nb.text == before.get(nb.block_id):
+            continue  # nothing to write; not an error, just not applied
+        if tag.find(True):
+            skipped_blocks.append({"block_id": nb.block_id, "reason": "block contains links or inline formatting"})
             continue
-        tag.string = after
-        changed.append(bid)
+        tag.string = nb.text
+        changed.append(nb.block_id)
 
-    skipped = (data.get("skipped", []) if isinstance(data, dict) else []) + not_written
+    # "applied" = recs whose block was really rewritten in the HTML
+    changed_ids = set(changed)
+    rec_block = {r.id: r.block_id for r in recs}
+    applied = [rid for rid in result.applied if rec_block.get(rid) in changed_ids]
 
     return {
         "adapted_html": str(soup),
         "changed_blocks": changed,
-        "applied": data.get("applied") if isinstance(data, dict) else None,
-        "skipped": skipped,
+        "applied": applied,
+        "skipped": [s.model_dump() for s in result.skipped] + skipped_blocks,
     }
