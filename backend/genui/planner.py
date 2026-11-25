@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from .context import Context, build_context
 from .guardrails import check_proposal, select
-from .policy import MAX_CHANGES
+from .policy import MAX_CHANGES, NO_LIMITS, UNLIMITED
 from .preview import preview
 from .prompt import build_messages
 from .recommend import to_recommendation
@@ -36,7 +36,7 @@ TASK = "genui"
 # 30 is 2.5 times the default page budget of 12 (A11Y_MAX_CHANGES), which leaves room for proposals that fail a
 # guardrail, and keeps the worst case on a 1 MB page near a minute, small next to a model call that takes minutes.
 # (It was 40 in an earlier commit; the lower number has the measured reason above.)
-MAX_PROPOSALS_CHECKED = 30
+MAX_PROPOSALS_CHECKED = UNLIMITED if NO_LIMITS else 30
 
 # Typed changes that carry the block's current text as a precondition. The code sets it from the live block
 # (the model never retypes it), so a change can never be applied to text that has since changed.

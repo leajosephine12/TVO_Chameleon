@@ -82,7 +82,8 @@ def _describe(block_id: str, tag: Tag, ids: dict[int, str]) -> dict:
     return info
 
 
-def build_context(html: str, findings: list[dict], *, judgement: bool = True) -> Context:
+def build_context(html: str, findings: list[dict], *, judgement: bool = True,
+                  max_findings: int = MAX_FINDINGS_IN_PROMPT) -> Context:
     soup = BeautifulSoup(html, "html.parser")
     index = _index_blocks(soup)
     ids = {id(tag): block_id for block_id, tag in index.items()}
@@ -92,7 +93,13 @@ def build_context(html: str, findings: list[dict], *, judgement: bool = True) ->
 
     actionable = [f for f in findings if is_actionable(f, index)]
     actionable.sort(key=lambda f: (TIER_ORDER.get(f.get("tier", "F"), 9), list(POLICY).index(f["metric_id"])))
-    actionable = actionable[:MAX_FINDINGS_IN_PROMPT]
+    # Take turns between metrics before cutting: a page with twenty hard paragraphs must not hide every other problem.
+    turns, seen = [], {}
+    for f in actionable:
+        seen[f["metric_id"]] = seen.get(f["metric_id"], 0) + 1
+        turns.append(seen[f["metric_id"]])
+    by_turn = sorted(zip(turns, range(len(actionable))))  # the index keeps the tier order inside each turn
+    actionable = [actionable[i] for _, i in by_turn[:max_findings]]
 
     ctx = Context(html=html, soup=soup, index=index, findings=actionable, blocks={})
     for f in actionable:
