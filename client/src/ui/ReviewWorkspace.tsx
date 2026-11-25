@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CaptureGateway, ReviewRepository } from '../application/ports';
 import { useCaptures } from '../application/useCaptures';
 import { useReviewSession } from '../application/useReviewSession';
@@ -29,8 +29,26 @@ interface Props {
 export function ReviewWorkspace({ repository, captureGateway, samplePage }: Props) {
   const [page, setPage] = useState(samplePage);
   const { session, error, decide, isLoading } = useReviewSession(repository, page);
-  const onCaptured = useCallback((capture: PageCapture) => setPage(pageFromCapture(capture)), []);
+
+  // A capture takes minutes. The new page opens by itself only if the reviewer is still on the page they
+  // started it from; if they moved on, it waits for them to open it, so their review is not taken away.
+  const currentPageUrl = useRef(page.url);
+  useEffect(() => {
+    currentPageUrl.current = page.url;
+  }, [page.url]);
+  const pageUrlWhenCaptureStarted = useRef<string | null>(null);
+  const [capturedPageToOpen, setCapturedPageToOpen] = useState<ReviewedPage | null>(null);
+  const onCaptured = useCallback((capture: PageCapture) => {
+    const captured = pageFromCapture(capture);
+    if (currentPageUrl.current === pageUrlWhenCaptureStarted.current) setPage(captured);
+    else setCapturedPageToOpen(captured);
+  }, []);
   const { captures, serverReachable, progress, startCapture } = useCaptures(captureGateway, onCaptured);
+  const startCaptureFromHere = (url: string) => {
+    pageUrlWhenCaptureStarted.current = page.url;
+    setCapturedPageToOpen(null);
+    startCapture(url);
+  };
   const [viewAs, setViewAs] = useState<ViewAs>('team');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('approved');
   const [selectedIds, setSelectedIds] = useState<Record<string, string | null>>({});
@@ -103,7 +121,13 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
         ) : (
           <>
             <PagePicker samplePage={samplePage} page={page} captures={captures} onPageChange={setPage} />
-            <CaptureMenu serverReachable={serverReachable} progress={progress} onCapture={startCapture} />
+            <CaptureMenu
+              serverReachable={serverReachable}
+              progress={progress}
+              onCapture={startCaptureFromHere}
+              onPageChange={setPage}
+              capturedPageToOpen={capturedPageToOpen?.url === page.url ? null : capturedPageToOpen}
+            />
           </>
         )}
       </AppHeader>

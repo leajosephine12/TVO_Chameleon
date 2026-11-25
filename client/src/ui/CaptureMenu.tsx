@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { CaptureProgress } from '../application/useCaptures';
+import type { ReviewedPage } from '../domain/review';
 import { captureSteps, type StepState } from './captureSteps';
 
 const STEP_ICON_LABEL: Record<StepState, string> = {
@@ -10,7 +11,15 @@ const STEP_ICON_LABEL: Record<StepState, string> = {
 };
 
 /** The capture's progress as a few plain steps. The full log stays one click away for when something breaks. */
-function CaptureProgressView({ progress }: { progress: CaptureProgress }) {
+function CaptureProgressView({
+  progress,
+  capturedPageToOpen,
+  onPageChange,
+}: {
+  progress: CaptureProgress;
+  capturedPageToOpen: ReviewedPage | null;
+  onPageChange: (page: ReviewedPage) => void;
+}) {
   const [showLog, setShowLog] = useState(false);
   const steps = captureSteps(progress);
   if (steps.length === 0) return null;
@@ -26,6 +35,12 @@ function CaptureProgressView({ progress }: { progress: CaptureProgress }) {
         ))}
       </ol>
       {progress.error && <p className="error">{progress.error}</p>}
+      {/* The reviewer moved to another page while this one was capturing, so it waits here instead of opening. */}
+      {progress.status === 'done' && capturedPageToOpen && (
+        <button type="button" className="log-toggle" onClick={() => onPageChange(capturedPageToOpen)}>
+          Open {capturedPageToOpen.label}
+        </button>
+      )}
       {progress.status === 'running' && (
         <p className="capture-note">This takes a few minutes. You can close this and keep reviewing.</p>
       )}
@@ -57,13 +72,22 @@ interface Props {
   serverReachable: boolean;
   progress: CaptureProgress;
   onCapture: (url: string) => void;
+  onPageChange: (page: ReviewedPage) => void;
+  /** A page that finished capturing after the reviewer moved on, offered here instead of opened. */
+  capturedPageToOpen: ReviewedPage | null;
 }
 
 /**
  * The "Capture a page" button in the top bar and the pop-up it opens, where a TVO Learn link is pasted and
  * the capture's progress is shown. The pop-up can be closed while a capture runs and opened again to check it.
  */
-export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
+export function CaptureMenu({
+  serverReachable,
+  progress,
+  onCapture,
+  onPageChange,
+  capturedPageToOpen,
+}: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [url, setUrl] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -139,7 +163,11 @@ export function CaptureMenu({ serverReachable, progress, onCapture }: Props) {
               The capture server is not running, so only the sample page is available.
             </p>
           )}
-          <CaptureProgressView progress={progress} />
+          <CaptureProgressView
+            progress={progress}
+            capturedPageToOpen={capturedPageToOpen}
+            onPageChange={onPageChange}
+          />
         </section>
       )}
     </div>
