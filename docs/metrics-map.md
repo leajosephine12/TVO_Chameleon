@@ -1,7 +1,7 @@
 # Metrics → implementation map
 
 Source: `docs/metrics.pdf` (TVO Chameleon Metrics — Beyond WCAG 2.0 AA).
-Design only — nothing here is implemented yet.
+The map below distinguishes existing measurements from planned work; crawl implementation status is in Bucket 3.
 
 ## The split
 
@@ -13,8 +13,9 @@ model prompt instead.
    MCP tools. These findings are *facts* the model receives as input.
 2. **CODE+NLP** — deterministic but needs a local NLP model (spaCy parser,
    sentence embeddings). Still no LLM judgement; add after bucket 1 works.
-3. **CRAWL** — needs multiple pages of the unit. Needs a `crawl_unit(urls)`
-   tool later; out of scope for the single-page pipeline.
+3. **CRAWL** — needs multiple pages of the unit. The GenUI library has an
+   opt-in bounded same-origin crawl for J7/J8 and a report-only N4 comparison.
+   Semantic or underspecified metrics stay deferred; see `backend/genui/README.md`.
 4. **MODEL** — real judgement. These are *not* coded. They become
    instructions in the backend's model-call prompts ("check whether each
    heading matches its section content"), optionally with code-extracted
@@ -117,12 +118,27 @@ screenshot, computed styles, and axe injection.
 These bolt onto `analyze_text`/`structure_checks` behind the same finding
 format; a small local embedding model keeps them deterministic and cheap.
 
-## Bucket 3 — CRAWL (needs multi-page tool, later)
+## Bucket 3 — CRAWL
 
-J6 (link text vs destination), J7 (same label, different targets), J8
-(different labels, same target), J13 (inconsistent terminology), N4
-(consistent nav order), N5 (consistent help position), N9 (click depth,
-report-only).
+`backend/genui/crawl.py` starts with the analyzed page and samples up to five
+direct, unique, same-origin HTML links. The page selection is intentionally
+bounded; crawled pages inform recommendations but are never modified.
+
+| ID | Status | Measurement / action |
+|---|---|---|
+| J7 | Implemented | Exact repeated link label with multiple destinations; the model may propose a typed `set_link_text` change on the analyzed page. |
+| J8 | Implemented | A link to a shared destination whose label differs from the unique most-common label in the sample; the model may normalize that page's link label with `set_link_text`. Ties are not proposed. |
+| N4 | Report-only | Compare the relative DOM order of shared links in the first navigation landmark; no element-moving action is supported. |
+| J6 | Deferred | The metric's `< 0.3` similarity threshold does not define a similarity algorithm; no reproducible re-measure gate yet. |
+| J13 | Deferred | Inconsistent terminology requires synonym/concept judgement; no deterministic candidate rule is defined. |
+| N5 | Deferred | "Same place" for help/contact links does not define DOM, landmark, or visual position. |
+| N9 | Deferred | Click depth is report-only, and the metrics document does not specify the root page from which depth is measured. |
+
+The crawl is opt-in (`analyze_general(..., crawl=True)`), same scheme/host/port
+only, capped at six pages including the seed, and uses bounded HTML-only
+requests. Crawl findings retain the metric source, sampled page URLs and website
+origins. J7/J8 recommendations are explicitly marked as crawl evidence; N4
+findings carry no suggested change.
 
 ## Bucket 4 — MODEL judgement (prompt instructions, never coded)
 
