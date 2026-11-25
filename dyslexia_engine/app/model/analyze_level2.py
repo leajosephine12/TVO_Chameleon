@@ -32,11 +32,11 @@ from ..guidelines.level2_plain_text import (
     SILENT_LETTER_EXAMPLES,
 )
 
-LONG_SENTENCE_WORDS = 20      # sentences with MORE words than this are reported
+LONG_SENTENCE_WORDS = 25      # same as T3 in accessibility_metrics/thresholds.py
 MAX_DIFFICULT_WORDS = 5       # per block
 MAX_ITEMS = 5                 # cap for every other list, per block
 DIFFICULT_MIN_SYLLABLES = 3
-TARGETS = {"grade_level": "3-5", "max_sentence_words": "15-20"}
+TARGETS = {"grade_level": "3-5", "max_sentence_words": "15-20"}  # 15-20 is T3's "ideal", 25 is its limit
 DETECTED_RULES = {"L2.1.1", "L2.1.2", "L2.1.3", "L2.1.4", "L2.1.5", "L2.1.6", "L2.1.7"}
 
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(])")

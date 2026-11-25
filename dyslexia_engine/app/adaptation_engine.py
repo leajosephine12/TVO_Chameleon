@@ -59,10 +59,7 @@ def apply(
     if level == 1:
         if html is None:
             raise ValueError("Level 1 needs `html`.")
-        # apply_level1 only acts on status accepted/edited. Everything in `accepted` was accepted
-        # by the user, so a card still marked "pending" counts as accepted. Denied stays denied.
-        recs = [r.model_copy(update={"status": "accepted"}) if r.status == "pending" else r for r in accepted]
-        return apply_level1(html, recs)
+        return apply_level1(html, accepted)
 
     if not blocks:
         raise ValueError("Level 2 needs `blocks`.")
