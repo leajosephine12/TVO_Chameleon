@@ -279,9 +279,10 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
                 if _has_rich_inline(tag):
                     raise ValueError("block contains links or inline formatting; rich content was preserved by skipping")
                 pieces = []
-                for part in change.parts:
+                for n, part in enumerate(change.parts):
                     piece = soup.new_tag("p")
-                    piece.attrs = {k: v for k, v in tag.attrs.items() if k != "id"}
+                    # The first part keeps the id, so a #id link still lands at the start; ids must stay unique.
+                    piece.attrs = {k: v for k, v in tag.attrs.items() if n == 0 or k != "id"}
                     piece.string = part
                     pieces.append(piece)
                 tag.replace_with(*pieces)
@@ -311,11 +312,11 @@ def apply_adapted_spec(html: str, spec: AdaptedUISpec) -> RenderResult:
                 if len(resolved) != len(current) or any(a is not b for a, b in zip(resolved, current)):
                     raise ValueError("group item ids do not match the list's current direct items in order")
                 pieces = []
-                for group, items in zip(change.groups, groups):
+                for n, (group, items) in enumerate(zip(change.groups, groups)):
                     heading = soup.new_tag(f"h{change.level}")
                     heading.string = group.label
                     part = soup.new_tag(tag.name)
-                    part.attrs = {k: v for k, v in tag.attrs.items() if k != "id"}
+                    part.attrs = {k: v for k, v in tag.attrs.items() if n == 0 or k != "id"}  # first list keeps the id
                     for item in items:
                         part.append(item.extract())
                     pieces += [heading, part]

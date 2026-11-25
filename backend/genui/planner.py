@@ -31,7 +31,12 @@ from .standin import standin_caller
 
 log = logging.getLogger("app.model")
 TASK = "genui"
-MAX_PROPOSALS_CHECKED = 30  # each one is applied and the page measured again; a runaway reply must not stall the server
+# How many proposals of one reply get the full check. Each one is applied and the whole page is measured again:
+# measured at about 0.3 s on a 127 KB page, 1.0 s on 506 KB and 2.3 s on 1 MB (a captured lesson is about 1 MB).
+# 30 is 2.5 times the default page budget of 12 (A11Y_MAX_CHANGES), which leaves room for proposals that fail a
+# guardrail, and keeps the worst case on a 1 MB page near a minute, small next to a model call that takes minutes.
+# (It was 40 in an earlier commit; the lower number has the measured reason above.)
+MAX_PROPOSALS_CHECKED = 30
 
 # Typed changes that carry the block's current text as a precondition. The code sets it from the live block
 # (the model never retypes it), so a change can never be applied to text that has since changed.
@@ -112,6 +117,7 @@ def parse_proposals(reply: str, ctx: Context) -> tuple[list[Proposal], list[dict
         items = _salvage(reply)  # cut off or junk at the end: keep the proposals that arrived whole
         if items is None:
             raise
+        log.info("task=%s outcome=salvaged: the reply was not valid JSON as a whole, kept its %d complete proposals", TASK, len(items))
     if not isinstance(items, list):
         raise ValueError("The reply has no 'proposals' list.")
     ok, bad = [], []

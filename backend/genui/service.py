@@ -53,20 +53,25 @@ def analyze_general(html: str, url: str | None = None, rendered: dict | None = N
             "findings": _capped(findings), "guardrails": report}
 
 
-def _edited_change(rec: A11yRecommendation, html: str) -> dict:
-    """The change as stored, with the reviewer's edit of `suggestion` put into the one field it stands for."""
+def _edited_change(rec: A11yRecommendation, html: str) -> tuple[dict | None, str | None]:
+    """(change, None) with the reviewer's edit of `suggestion` put into the one field it stands for, or
+    (None, reason) when the edit cannot be applied. The model's own version is never applied in place of an edit."""
     change = dict(rec.change)
     if rec.status != "edited":
-        return change
-    if change["action"] in _EDIT_FIELD:
-        change[_EDIT_FIELD[change["action"]]] = rec.suggestion
-    elif change["action"] == "replace_text" and rec.original:
+        return change, None
+    action = change["action"]
+    if action in _EDIT_FIELD:
+        change[_EDIT_FIELD[action]] = rec.suggestion
+        return change, None
+    if action == "replace_text":
         tag = _index_blocks(BeautifulSoup(html, "html.parser")).get(rec.block_id)
-        match = _find(block_text(tag), rec.original) if tag is not None else None
-        if match is not None:
-            text = block_text(tag)
-            change["value"] = text[: match.start()] + rec.suggestion + text[match.end():]
-    return change
+        match = _find(block_text(tag), rec.original) if tag is not None and rec.original else None
+        if match is None:
+            return None, "the edited text could not be placed because the original text was not found in the block."
+        text = block_text(tag)
+        change["value"] = text[: match.start()] + rec.suggestion + text[match.end():]
+        return change, None
+    return None, f"a {action} change cannot be edited. Approve it as proposed, or deny it."
 
 
 def apply_general(html: str, recs: list[A11yRecommendation]) -> dict:
@@ -76,8 +81,12 @@ def apply_general(html: str, recs: list[A11yRecommendation]) -> dict:
     for rec in recs:
         if rec.change is None or rec.status not in APPROVED:
             continue
+        stored, why_not = _edited_change(rec, html)
+        if stored is None:
+            reasons[rec.id] = why_not
+            continue
         try:
-            change = _CHANGE.validate_python(_edited_change(rec, html))
+            change = _CHANGE.validate_python(stored)
             AdaptedUISpec(changes=[*changes, change])  # the one-change-per-block rules
         except ValidationError as e:
             first = e.errors()[0]

@@ -113,7 +113,8 @@ def test_split_list_makes_several_lists_under_headings_and_keeps_every_item():
     assert [t.name for t in soup.find_all(["h3", "ul"])] == ["h3", "ul", "h3", "ul"]
     lists = soup.find_all("ul")
     assert [[li.get_text() for li in ul.find_all("li")] for ul in lists] == [["One", "Two"], ["Three", "Four"]]
-    assert all(ul.get("class") == ["menu"] and not ul.has_attr("id") for ul in lists)
+    assert all(ul.get("class") == ["menu"] for ul in lists)
+    assert [ul.get("id") for ul in lists] == ["m", None]  # the first list keeps the id, so #m still lands on it; ids stay unique
 
 
 def test_split_list_skips_when_the_groups_do_not_cover_the_list_in_order():
@@ -121,3 +122,12 @@ def test_split_list_skips_when_the_groups_do_not_cover_the_list_in_order():
         {"label": "A", "item_ids": ["li-2"]}, {"label": "B", "item_ids": ["li-1", "li-3"]}]})
     assert "do not match" in result.skipped[0]
     assert BeautifulSoup(result.html, "html.parser").find_all("ul").__len__() == 1
+
+
+def test_split_paragraph_keeps_the_id_on_the_first_part_only():
+    text = "One two. Three four."
+    result = render(f'<p id="intro" class="lead">{text}</p>',
+                    {"block_id": "p-1", "action": "split_paragraph", "parts": ["One two.", "Three four."], "expected_original": text})
+    paragraphs = BeautifulSoup(result.html, "html.parser").find_all("p")
+    assert [p.get("id") for p in paragraphs] == ["intro", None]
+    assert all(p["class"] == ["lead"] for p in paragraphs)
