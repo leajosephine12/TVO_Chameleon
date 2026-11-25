@@ -287,7 +287,6 @@ dependencies = [
     { name = "dyslexia-engine" },
     { name = "fastapi" },
     { name = "pydantic" },
-    { name = "python-dotenv" },
     { name = "uvicorn" },
 ]
 
@@ -304,7 +303,6 @@ requires-dist = [
     { name = "dyslexia-engine", editable = "../dyslexia_engine" },
     { name = "fastapi" },
     { name = "pydantic" },
-    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "uvicorn" },
 ]
 
