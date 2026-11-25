@@ -147,7 +147,7 @@ describe('createAnalysisReviewRepository', () => {
 
   it('tries again when the first analysis failed, for example because the backend was down', async () => {
     serveLesson();
-    const { analyze, gateway } = backendReturning(new Error('down'), [ITALIC_IN_ACTION_TAB]);
+    const { analyze, analyzeGeneral, gateway } = backendReturning(new Error('down'), [ITALIC_IN_ACTION_TAB]);
     const repository = createAnalysisReviewRepository(fallback, gateway, samplePage);
 
     const failed = await repository.loadSession(capturedPage);
@@ -156,5 +156,7 @@ describe('createAnalysisReviewRepository', () => {
     expect(failed.versions.find((v) => v.id === 'dyslexia')?.suggestions).toHaveLength(0);
     expect(retried.versions.find((v) => v.id === 'dyslexia')?.suggestions).toHaveLength(1);
     expect(analyze).toHaveBeenCalledTimes(2);
+    // The general analysis did not fail, so its result (which can take the model minutes) is kept.
+    expect(analyzeGeneral).toHaveBeenCalledTimes(1);
   });
 });

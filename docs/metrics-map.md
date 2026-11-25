@@ -152,15 +152,19 @@ Of the 57 metrics in this map:
 
 | Status | Count | Metrics |
 |---|---|---|
-| Measured by code, fix shown in the General tab | 21 | T1 T2 T3 T4 T7 T8, S1 S2 S3 S5, J5 J11 J12 J14, N8, L1 L2 L3 L4 L12, M1 |
+| Measured by code, fix shown in the General tab | 19 | T1 T2 T3 T4 T7 T8, S1 S2 S3 S5, J5 J11 J12 J14, N8, L1 L2 L3, M1 |
 | Judged by the model, shown in the General tab | 4 | T9 S4 S6 J15 |
-| Measured, but no suggestion appears | 9 | T6, N1 N2 N3 N6 N7, L6 L11, M2 |
+| Measured, but no suggestion appears | 11 | T6, N1 N2 N3 N6 N7, L4 L6 L11 L12, M2 |
 | Defined for the vision model, not used by the app | 3 | J10 N11 L5 |
 | Not implemented | 20 | L7 L8 L9 L10 (bucket 1, deferred); T5 S7 J1 J2 J3 J4 J9 (bucket 2); J6 J7 J8 J13 N4 N5 N9 (bucket 3); T10 N10 (bucket 4) |
 
 Partly done: L2 does not measure paragraph spacing, L12 does not count colours, S5 finds a list item
 with several sentences but has no fix, N8 finds menu depth but has no fix, and J12 and J14 only have
 their stoplist half.
+
+L4 and L12 are measured and have a policy, but no card reaches the reviewer: an L4 finding names an axe
+selector instead of a block id, and an L12 change targets `page`, which the `quotes_exact` guardrail
+rejects and the client has no block for.
 
 L1, L2 and L3 are fixed by code (`backend/genui/computed.py`). The other fixes are written by the
 model, so they need a real model: the `MODEL_MOCK=1` stand-in only splits sentences.

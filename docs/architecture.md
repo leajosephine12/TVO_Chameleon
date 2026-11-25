@@ -120,8 +120,8 @@ The fix keeps the two audiences apart from the backend to the tab:
   justified text (L2) and line length (L1) the fix is the threshold itself, so code writes the
   CSS. They pass the same guardrails, are merged into one card per block, and are still
   returned when the model step fails. The findings cap now takes turns between metrics.
-- Suggestion ids carry the version (`...#general-r1`), because both analyses number from `r1`
-  and decisions are stored by id.
+- Suggestion ids carry the version (`<page url>#general-<type>:<block>:<fingerprint>`), because both
+  analyses number from `r1` and decisions are stored by id.
 - The Dyslexia version is built on the General one, so its visitors also get the approved
   general changes.
 

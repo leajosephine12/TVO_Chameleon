@@ -82,7 +82,8 @@ def _describe(block_id: str, tag: Tag, ids: dict[int, str]) -> dict:
     return info
 
 
-def build_context(html: str, findings: list[dict], *, judgement: bool = True) -> Context:
+def build_context(html: str, findings: list[dict], *, judgement: bool = True,
+                  max_findings: int = MAX_FINDINGS_IN_PROMPT) -> Context:
     soup = BeautifulSoup(html, "html.parser")
     index = _index_blocks(soup)
     ids = {id(tag): block_id for block_id, tag in index.items()}
@@ -98,7 +99,7 @@ def build_context(html: str, findings: list[dict], *, judgement: bool = True) ->
         seen[f["metric_id"]] = seen.get(f["metric_id"], 0) + 1
         turns.append(seen[f["metric_id"]])
     by_turn = sorted(zip(turns, range(len(actionable))))  # the index keeps the tier order inside each turn
-    actionable = [actionable[i] for _, i in by_turn[:MAX_FINDINGS_IN_PROMPT]]
+    actionable = [actionable[i] for _, i in by_turn[:max_findings]]
 
     ctx = Context(html=html, soup=soup, index=index, findings=actionable, blocks={})
     for f in actionable:

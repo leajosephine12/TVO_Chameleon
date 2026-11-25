@@ -37,7 +37,9 @@ def computed_recommendations(html: str, findings: list[dict], start_id: int = 1)
 
     One recommendation per block: a paragraph that is both small and cramped gets one card with both declarations,
     because the page-change spec allows one style change per block."""
-    ctx = build_context(html, [f for f in findings if f["metric_id"] in COMPUTED_METRICS], judgement=False)
+    # max_findings: the default is a prompt limit. Cutting here would leave a block with half of its fix.
+    ctx = build_context(html, [f for f in findings if f["metric_id"] in COMPUTED_METRICS], judgement=False,
+                        max_findings=len(findings))
     ctx.baseline = findings
     per_block: dict[str, list[Proposal]] = {}
     rejected = []
@@ -53,6 +55,9 @@ def computed_recommendations(html: str, findings: list[dict], start_id: int = 1)
             per_block.setdefault(p.block_id, []).append(p)
 
     recs = []
+    for block_id, proposals in list(per_block.items())[MAX_CHANGES:]:
+        rejected += [{"metric_id": p.metric_id, "block_id": block_id, "action": "set_style",
+                      "reasons": [f"over the page budget of {MAX_CHANGES} changes."]} for p in proposals]
     for block_id, proposals in list(per_block.items())[:MAX_CHANGES]:  # reviewer attention is the budget
         parts = [to_recommendation(0, p, p.change, ctx, None, p.change.value) for p in proposals]
         css = "; ".join(r.preview_css for r in parts)

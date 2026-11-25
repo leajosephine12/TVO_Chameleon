@@ -126,7 +126,7 @@ def analyze_general_page(req: AnalyzeRequest):
     except Exception as e:  # no Playwright, or the page could not be opened: the text and structure checks still run
         if not req.html:
             raise HTTPException(status_code=502, detail=f"The page could not be rendered: {e}")
-        html, rendered, layout_error = req.html, None, str(e).splitlines()[0]
+        html, rendered, layout_error = req.html, None, (str(e).splitlines() or [type(e).__name__])[0]
     return {**analyze_general(html, req.url, rendered), "layout_error": layout_error}
 
 

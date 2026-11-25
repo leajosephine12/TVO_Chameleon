@@ -165,6 +165,31 @@ def test_layout_fixes_are_computed_in_code_and_ship_even_when_the_model_step_fai
     assert applied["applied"] == [rec.id] and "font-size: 16px" in applied["adapted_html"]
 
 
+def test_every_layout_finding_reaches_its_block_and_fixes_over_the_budget_are_reported(monkeypatch):
+    """More layout findings than the prompt cap (20) and more blocks than the page budget (12)."""
+    import genui.service as service
+    from app.model.client import ModelCallError
+    from genui import analyze_general
+    from genui.policy import MAX_CHANGES
+
+    def no_model(*args, **kwargs):
+        raise ModelCallError("model is down")
+
+    monkeypatch.setattr(service, "plan_changes", no_model)
+    blocks = 25
+    html = "<html><body>" + "<p>Small and cramped text.</p>" * blocks + "</body></html>"
+    measured = lambda metric, n, m: {"metric_id": metric, "block_id": f"p-{n}", "measured": m, "detail": "d",  # noqa: E731
+                                     "threshold": "t", "source": "s", "tier": "C"}
+    every = range(1, blocks + 1)
+    rendered = {"findings": [measured("L3", n, {"font_size_px": 12.0}) for n in every]
+                            + [measured("L2", n, {"line_height": 1.2, "text_align": "left"}) for n in every]}
+    out = analyze_general(html, None, rendered)
+    shown = min(blocks, MAX_CHANGES)
+    assert [r.type for r in out["recommendations"]] == ["L2+L3"] * shown  # no block is left with half of its fix
+    over = [r for r in out["guardrails"]["rejected"] if "over the page budget" in r["reasons"][0]]
+    assert len(over) == (blocks - shown) * 2  # reported even though the model step failed
+
+
 def test_general_analysis_still_runs_when_the_page_cannot_be_rendered():
     html = "<html><body><p>Short text.</p></body></html>"
     r = client.post("/analyze_general", json={"html": html, "url": "http://127.0.0.1:9/nothing-here", "render": True})

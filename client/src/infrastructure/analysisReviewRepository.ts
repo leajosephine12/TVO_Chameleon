@@ -123,6 +123,23 @@ export function createAnalysisReviewRepository(
     };
   }
 
+  /**
+   * What each analysis found for each page, kept for as long as the app is open. The language model can take
+   * minutes, so going back to a page that was already analysed must not run it again. An analysis that could
+   * not be run (the backend was down) is not kept, so the next visit tries that one again; the other
+   * version's result stays, with the ids its decisions were saved under.
+   */
+  const results = new Map<string, Promise<Found>>();
+  function once(key: string, run: () => Promise<Found>): Promise<Found> {
+    let result = results.get(key);
+    if (!result) {
+      result = run().catch(notRun);
+      results.set(key, result);
+      void result.then((found) => found.failed && results.delete(key));
+    }
+    return result;
+  }
+
   /** Runs both analyses on the same HTML. One failing leaves the other version's suggestions in place. */
   async function analysePage(page: ReviewedPage) {
     const pageHtml = await fetchText(page.url);
@@ -134,31 +151,14 @@ export function createAnalysisReviewRepository(
     const lessonTabs = standardLessonTabs(readLessonTabs(html));
     const placement = { pageUrl: page.url, knownTabIds: new Set(lessonTabs.map((tab) => tab.id)) };
     const [general, dyslexia] = await Promise.all([
-      generalSuggestions(html, htmlUrl, placement).catch(notRun),
-      dyslexiaSuggestions(html, placement).catch(notRun),
+      once(`${page.url}#${GENERAL_VERSION_ID}`, () => generalSuggestions(html, htmlUrl, placement)),
+      once(`${page.url}#${DYSLEXIA_VERSION_ID}`, () => dyslexiaSuggestions(html, placement)),
     ]);
     return {
       targetFrame,
       lessonTabs,
       found: { [GENERAL_VERSION_ID]: general, [DYSLEXIA_VERSION_ID]: dyslexia } as Record<string, Found>,
     };
-  }
-
-  /**
-   * What the analysis found for each page, kept for as long as the app is open. The language model can take
-   * minutes, so going back to a page that was already analysed must not run it again.
-   */
-  const analyses = new Map<string, ReturnType<typeof analysePage>>();
-  function analysisOf(page: ReviewedPage) {
-    let analysis = analyses.get(page.url);
-    if (!analysis) {
-      analysis = analysePage(page);
-      analyses.set(page.url, analysis);
-      // An analysis that could not be run (the backend was down) is not kept, so the next visit tries again.
-      const forget = () => analyses.delete(page.url);
-      analysis.then(({ found }) => Object.values(found).some((f) => f.failed) && forget(), forget);
-    }
-    return analysis;
   }
 
   /** Puts what each analysis found (or why there is nothing) into its own version. */
@@ -179,7 +179,7 @@ export function createAnalysisReviewRepository(
         suggestions: [],
       }));
       try {
-        const { targetFrame, lessonTabs, found } = await analysisOf(page);
+        const { targetFrame, lessonTabs, found } = await analysePage(page);
         return { ...base, targetFrame, lessonTabs, versions: withAnalysis(blankVersions, found) };
       } catch (error) {
         // Without the captured page there is nothing to analyse, so say what is missing instead of failing.

@@ -17,7 +17,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from .computed import COMPUTED_METRICS, computed_recommendations
 from .measure import measure
-from .planner import plan_changes
+from .planner import PlanResult, plan_changes
 from .schemas import A11yRecommendation
 
 MODEL_ERRORS = (ModelConfigError, ModelCallError, ModelOutputError)
@@ -54,6 +54,7 @@ def analyze_general(html: str, url: str | None = None, rendered: dict | None = N
         report["rejected"] = computed_rejected + report["rejected"]
     except MODEL_ERRORS as e:
         model_error = str(e)  # the measured findings still ship; the UI can say the model step failed
+        report = PlanResult(recommendations=recommendations, rejected=computed_rejected).report()
     return {"level": "general", "recommendations": recommendations, "model_error": model_error,
             "findings": _capped(findings), "guardrails": report}
 
