@@ -32,6 +32,21 @@ describe('replaceText', () => {
     expect(doc.querySelector('p')?.textContent).toBe('Short.');
   });
 
+  it('finds the text in the second half of a paragraph that an approved change split in two', () => {
+    const doc = pageWith('<p data-cid="a">First idea. A long sentence.</p>');
+
+    apply(doc, [
+      {
+        kind: 'replaceElement',
+        selector: '[data-cid="a"]',
+        html: '<p data-cid="a">First idea.</p><p data-cid="a">A long sentence.</p>',
+      },
+      { kind: 'replaceText', selector: '[data-cid="a"]', find: 'A long sentence.', text: 'Short.' },
+    ]);
+
+    expect(doc.body.innerHTML).toContain('<p data-cid="a">First idea.</p><p data-cid="a">Short.</p>');
+  });
+
   it('cannot match text that a link splits, which is why such suggestions are not offered', () => {
     const doc = pageWith('<p data-cid="a">A long <a href="#">linked</a> sentence.</p>');
 

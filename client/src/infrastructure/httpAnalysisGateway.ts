@@ -23,8 +23,23 @@ const postJson = (body: unknown): RequestInit => ({
 export function createHttpAnalysisGateway(): AnalysisGateway {
   return {
     analyze: async (html) => {
-      const response = await requestJson<AnalyzeResponse>('/backend/analyze', postJson({ html }));
+      // rules_only: the model's text suggestions come from the general metrics, so they are asked for below.
+      const response = await requestJson<AnalyzeResponse>(
+        '/backend/analyze',
+        postJson({ html, rules_only: true }),
+      );
       return { recommendations: response.recommendations, modelError: response.model_error };
+    },
+    analyzeGeneral: async (html, url) => {
+      const response = await requestJson<AnalyzeResponse & { layout_error: string | null }>(
+        '/backend/analyze_general',
+        postJson({ html, url, render: true }),
+      );
+      return {
+        recommendations: response.recommendations,
+        modelError: response.model_error,
+        layoutError: response.layout_error,
+      };
     },
     adapt: async (html, recommendations) => {
       const response = await requestJson<AdaptedResponse>(

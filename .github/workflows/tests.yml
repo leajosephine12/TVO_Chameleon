@@ -23,4 +23,4 @@ jobs:
         working-directory: backend
         env:
           MODEL_MOCK: "1"
-        run: uv run pytest test_main.py ../dyslexia_engine ../accessibility_engine/tests
+        run: uv run pytest test_main.py tests ../dyslexia_engine ../accessibility_engine/tests

@@ -4,6 +4,7 @@ import type { Recommendation } from '../domain/analysis';
 import type { ReviewedPage } from '../domain/review';
 import {
   ANALYSIS_UNAVAILABLE_NOTE,
+  LAYOUT_UNCHECKED_NOTE,
   createAnalysisReviewRepository,
   MODEL_UNAVAILABLE_NOTE,
 } from './analysisReviewRepository';
@@ -37,6 +38,20 @@ const ITALIC_IN_ACTION_TAB: Recommendation = {
   status: 'pending',
 };
 
+const SPLIT_IN_MINDS_ON_TAB: Recommendation = {
+  id: 'r1',
+  block_id: 'p-1',
+  type: 'S1',
+  title: 'Paragraph is long',
+  original: 'Intro',
+  suggestion: 'In. Tro.',
+  rationale: 'Shorter paragraphs are easier to follow.',
+  evidence: 'S1',
+  severity: 'low',
+  status: 'pending',
+  preview_html: '<p data-cid="a">In.</p><p data-cid="a">Tro.</p>',
+};
+
 const samplePage: ReviewedPage = { label: 'Sample', url: '/sample.html' };
 const capturedPage: ReviewedPage = { label: 'Captured', url: '/snapshots/x/frames/f0.html' };
 
@@ -59,11 +74,17 @@ function backendReturning(...results: Array<Recommendation[] | Error>) {
     if (next instanceof Error) throw next;
     return { recommendations: next, modelError: null };
   });
+  const analyzeGeneral = vi.fn<AnalysisGateway['analyzeGeneral']>(async () => ({
+    recommendations: [SPLIT_IN_MINDS_ON_TAB],
+    modelError: null,
+    layoutError: null,
+  }));
   const gateway: AnalysisGateway = {
     analyze,
+    analyzeGeneral,
     adapt: async () => ({ injectedCss: '', applied: [], skipped: [] }),
   };
-  return { analyze, gateway };
+  return { analyze, analyzeGeneral, gateway };
 }
 
 // The repository logs the technical reason for a missing analysis; keep that out of the test output.
@@ -94,6 +115,23 @@ describe('createAnalysisReviewRepository', () => {
     expect(dyslexia?.suggestions.map((s) => s.tabId)).toEqual(['action']);
   });
 
+  it('fills the general version from its own analysis, under its own tab and ids', async () => {
+    serveLesson();
+    const { analyze, analyzeGeneral, gateway } = backendReturning([ITALIC_IN_ACTION_TAB]);
+    const repository = createAnalysisReviewRepository(fallback, gateway, samplePage);
+
+    const session = await repository.loadSession(capturedPage);
+    await repository.loadSession(capturedPage);
+
+    const [general] = session.versions.find((v) => v.id === 'general')?.suggestions ?? [];
+    const [dyslexia] = session.versions.find((v) => v.id === 'dyslexia')?.suggestions ?? [];
+    expect(general).toMatchObject({ title: 'Paragraph is long', tabId: 'mindsOn' });
+    // Both backends number from "r1": the ids must differ, and must not depend on that number.
+    expect(general.id).toContain('#general-S1:p-1:');
+    expect(dyslexia.id).not.toBe(general.id);
+    expect([analyze, analyzeGeneral].map((call) => call.mock.calls.length)).toEqual([1, 1]);
+  });
+
   it('keeps one list when the lesson does not have the usual three tabs', async () => {
     serveLesson(OTHER_TABS_LESSON);
     const { gateway } = backendReturning([ITALIC_IN_ACTION_TAB]);
@@ -122,7 +160,7 @@ describe('createAnalysisReviewRepository', () => {
 
   it('tries again when the first analysis failed, for example because the backend was down', async () => {
     serveLesson();
-    const { analyze, gateway } = backendReturning(new Error('down'), [ITALIC_IN_ACTION_TAB]);
+    const { analyze, analyzeGeneral, gateway } = backendReturning(new Error('down'), [ITALIC_IN_ACTION_TAB]);
     const repository = createAnalysisReviewRepository(fallback, gateway, samplePage);
 
     const failed = await repository.loadSession(capturedPage);
@@ -131,28 +169,52 @@ describe('createAnalysisReviewRepository', () => {
     expect(failed.versions.find((v) => v.id === 'dyslexia')?.suggestions).toHaveLength(0);
     expect(retried.versions.find((v) => v.id === 'dyslexia')?.suggestions).toHaveLength(1);
     expect(analyze).toHaveBeenCalledTimes(2);
+    // The general analysis did not fail, so its result (which can take the model minutes) is kept.
+    expect(analyzeGeneral).toHaveBeenCalledTimes(1);
   });
 
   it('tells the reviewer in plain words when the language model was not reached, and keeps the details in the console', async () => {
     serveLesson();
-    const gateway: AnalysisGateway = {
-      analyze: async () => ({ recommendations: [ITALIC_IN_ACTION_TAB], modelError: 'MODEL_NAME is not set' }),
-      adapt: async () => ({ injectedCss: '', applied: [], skipped: [] }),
-    };
+    const { gateway, analyzeGeneral } = backendReturning([ITALIC_IN_ACTION_TAB]);
+    analyzeGeneral.mockResolvedValue({
+      recommendations: [],
+      modelError: 'MODEL_NAME is not set',
+      layoutError: null,
+    });
 
     const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
       capturedPage,
     );
 
-    const note = session.versions.find((v) => v.id === 'dyslexia')?.note ?? '';
+    const note = session.versions.find((v) => v.id === 'general')?.note ?? '';
     expect(note).toContain(MODEL_UNAVAILABLE_NOTE);
     expect(note).not.toContain('MODEL_NAME');
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('MODEL_NAME is not set'));
   });
 
+  it('says in plain words when the layout was not checked, and keeps the details in the console', async () => {
+    serveLesson();
+    const { gateway, analyzeGeneral } = backendReturning([ITALIC_IN_ACTION_TAB]);
+    analyzeGeneral.mockResolvedValue({
+      recommendations: [],
+      modelError: null,
+      layoutError: 'net::ERR_CONNECTION_REFUSED',
+    });
+
+    const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
+      capturedPage,
+    );
+
+    const note = session.versions.find((v) => v.id === 'general')?.note ?? '';
+    expect(note).toContain(LAYOUT_UNCHECKED_NOTE);
+    expect(note).not.toContain('ERR_CONNECTION_REFUSED');
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('ERR_CONNECTION_REFUSED'));
+  });
+
   it('says on every version that the suggestions could not be loaded, without the technical reason', async () => {
     serveLesson();
-    const { gateway } = backendReturning(new Error('connect ECONNREFUSED 127.0.0.1:8001'));
+    const { gateway, analyzeGeneral } = backendReturning(new Error('connect ECONNREFUSED 127.0.0.1:8001'));
+    analyzeGeneral.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:8001'));
 
     const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
       capturedPage,
