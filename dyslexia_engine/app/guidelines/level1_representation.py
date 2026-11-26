@@ -160,13 +160,38 @@ html, body {{
   word-spacing: {WORD_SPACING_EM}em !important;
 }}
 body * {{ line-height: inherit !important; }}
+
+/* headings are already enlarged, so don't add extra spacing on top */
+h1, h2, h3, h4, h5, h6 {{
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}}
+
+/* engineering safeguard: let text containers grow instead of overlapping */
+h1, h2, h3, h4, h5, h6, p, li, label, button, [role="tab"] {{
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  white-space: normal !important;
+}}
 """
 
 
 def _color() -> str:
     return f"""/* color: L1.2.1, L1.2.2 */
 html, body {{ background: {BG_COLOR} !important; color: {TEXT_COLOR} !important; }}
-body * {{ background-color: transparent !important; color: inherit !important; }}
+
+/* raise specificity with :not(#_) and also cover pseudo-elements */
+html body *:not(#_):not(img):not(picture):not(video):not(canvas):not(svg):not(svg *),
+html body *:not(#_)::before,
+html body *:not(#_)::after {{
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}}
+
+html body *:not(#_) {{ color: inherit !important; }}
 a {{ color: {LINK_COLOR} !important; }}
 """
 
