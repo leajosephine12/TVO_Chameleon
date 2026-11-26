@@ -25,9 +25,9 @@ import re
 from collections import Counter
 
 from accessibility_metrics.thresholds import THRESHOLDS
-from app.model.adapted_renderer import apply_adapted_spec
-from app.model.adapted_ui import _find
-from app.model.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
+from app.model.level3_future.adapted_renderer import apply_adapted_spec
+from app.model.level3_future.adapted_ui import _find
+from app.model.level3_future.adapted_ui_spec import AdaptedUISpec, ReplaceText, parse_css
 from app.model.guards import lost_facts, numbers_in
 from pydantic import ValidationError
 

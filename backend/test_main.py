@@ -1,4 +1,6 @@
-"""Smallest end-to-end check: analyze then adapt the sample page, mock model.
+"""
+backend/test_main.py
+Smallest end-to-end check: analyze then adapt the sample page, mock model.
 
 Run: MODEL_MOCK=1 uv run pytest
 """
@@ -12,8 +14,7 @@ from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
-HTML = (Path(__file__).parents[1] / "dyslexia_engine/demo/sample_iframe.html").read_text()
-
+HTML = (Path(__file__).parents[1] / "dyslexia_engine/tests/test_updated_level1and2/results/original.html").read_text()
 
 def test_analyze_then_adapt():
     r = client.post("/analyze", json={"html": HTML})
@@ -137,7 +138,7 @@ def test_general_accessibility_has_its_own_endpoints_and_rules_only_keeps_the_mo
     assert out["applied"] == [r["id"] for r in recs] and out["adapted_html"] != html
 
     rules = client.post("/analyze", json={"html": HTML, "rules_only": True}).json()["recommendations"]
-    assert rules and all(r["evidence"].startswith("Level 1 guideline") for r in rules)
+    assert rules and all(r["evidence"].startswith("L1.") for r in rules)
 
 
 def test_layout_fixes_are_computed_in_code_and_ship_even_when_the_model_step_fails(monkeypatch):

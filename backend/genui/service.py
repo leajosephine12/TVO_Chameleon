@@ -5,10 +5,10 @@
 
 Same shape as the dyslexia flow: /analyze returns recommendations, the UI collects decisions, /adapted applies them.
 """
-from app.adaptation_engine import _index_blocks
-from app.model.adapted_renderer import apply_adapted_spec, block_text
-from app.model.adapted_ui import _find
-from app.model.adapted_ui_spec import AdaptedUISpec, Change
+from app.levels.level1_representation import _index_blocks #will be fixed
+from app.model.level3_future.adapted_renderer import apply_adapted_spec, block_text
+from app.model.level3_future.adapted_ui import _find
+from app.model.level3_future.adapted_ui_spec import AdaptedUISpec, Change
 from app.model.client import ModelCallError
 from app.model.config import ModelConfigError
 from app.model.runner import ModelOutputError

@@ -1,4 +1,6 @@
-"""Turn on the per-attempt timing log (it is silent unless a program calls this or sets up logging)."""
+"""
+dyslexia_engine/model/log.py
+Turn on the per-attempt timing log (it is silent unless a program calls this or sets up logging)."""
 import logging
 
 

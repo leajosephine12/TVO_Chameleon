@@ -1,8 +1,8 @@
 """Measure a page with the accessibility engine. The same code runs before the model (to find problems)
 and after a proposed change (to prove the problem is gone)."""
 from accessibility_metrics import analyze_text, structure_checks
-from app.adaptation_engine import _index_blocks
-from app.model.adapted_renderer import visible_text
+from app.levels.level1_representation import _index_blocks #will be fixed
+from app.model.level3_future.adapted_renderer import visible_text
 from bs4 import BeautifulSoup
 
 PROSE_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"}

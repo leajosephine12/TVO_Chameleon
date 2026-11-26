@@ -1,4 +1,6 @@
-"""call_model(): the one place that talks to a model. Mock or real, chosen by config only.
+"""
+dyslexia_engine/model/client.py
+call_model(): the one place that talks to a model. Mock or real, chosen by config only.
 
 Real mode sends a standard POST {MODEL_BASE_URL}/chat/completions (OpenAI format), so the same
 code works with Ollama locally or RunPod later. It returns the assistant's reply as a string;

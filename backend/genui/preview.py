@@ -3,9 +3,9 @@
 The review UI previews a card by swapping the block for this HTML, so what a reviewer approves is exactly what the
 renderer will produce later, and the browser never needs its own copy of each action.
 """
-from app.adaptation_engine import _index_blocks
-from app.model.adapted_renderer import apply_adapted_spec
-from app.model.adapted_ui_spec import AdaptedUISpec
+from app.levels.level1_representation import _index_blocks #will be fixed
+from app.model.level3_future.adapted_renderer import apply_adapted_spec
+from app.model.level3_future.adapted_ui_spec import AdaptedUISpec
 from bs4 import BeautifulSoup, Comment
 
 _START, _END = "genui-start", "genui-end"

@@ -1,0 +1,7 @@
+{
+  "adapted_html": "<!DOCTYPE html>\n\n<html>\n<head>\n<title>Photosynthesis</title>\n<style>\n    body { font-family: \"Times New Roman\", serif; font-size: 12px; background: #fff; color: #000; }\n    .content { column-count: 2; column-gap: 20px; }\n    h1 { font-size: 14px; }\n  </style>\n</head>\n<body>\n<h1>How plants make food</h1>\n<div class=\"content\">\n<p>Photosynthesis is the process <em>by which</em> plants turn sunlight into energy. It takes place in the <u>chloroplasts</u> of each cell.</p>\n<p style=\"font-style: italic;\">Plants need three things: light, water and carbon dioxide.</p>\n<p>Read the <a href=\"/lesson-2\">next lesson</a> to learn about <i>respiration</i>.</p>\n</div>\n</body>\n</html>\n",
+  "injected_css": "",
+  "applied": [],
+  "skipped": [],
+  "contrast_ratio": null
+}

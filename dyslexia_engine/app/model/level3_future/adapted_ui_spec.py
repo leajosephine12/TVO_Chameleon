@@ -32,7 +32,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from .guards import lost_facts
+from ..guards import MAX_CHANGES, MAX_ITEM_CHARS, MAX_ITEMS, MAX_LABEL_CHARS, lost_facts
 
 ALLOWED_CSS_PROPERTIES = frozenset({
     "font-size", "font-family", "font-weight", "font-style", "line-height", "letter-spacing", "word-spacing",
@@ -44,11 +44,6 @@ _FORBIDDEN_IN_VALUE = ("url(", "expression", "javascript", "@import", "var(")
 # Something that looks like a real tag or comment: "<b>", "</p>", "<img src=x>", "<!-- -->", "<!DOCTYPE html>".
 # A lone "<" in prose ("5 <x litres", "x < y and y > z") is just text. The renderer inserts text as text anyway.
 _HTML_TAG = re.compile(r"</?[a-zA-Z][^<>]*>|<![a-zA-Z-][^<>]*>")
-
-MAX_ITEMS = 20
-MAX_CHANGES = 100
-MAX_ITEM_CHARS = 500
-MAX_LABEL_CHARS = 40
 
 
 def parse_css(css: str) -> dict[str, str]:

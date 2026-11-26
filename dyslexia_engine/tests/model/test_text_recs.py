@@ -1,3 +1,4 @@
+# dyslexia_engine/test/model/test_text_recs.py
 import json
 from pathlib import Path
 
@@ -185,7 +186,7 @@ def test_a_58_character_heading_is_rejected_and_the_model_gets_a_chance_to_short
 
 
 def test_the_prompt_states_the_structural_limits_from_the_spec():
-    from app.model.adapted_ui_spec import MAX_LABEL_CHARS
+    from app.model.level3_future.adapted_ui_spec import MAX_LABEL_CHARS
     fake = FakeModel(reply(rec()))
     gen(fake)
     assert f"at most {MAX_LABEL_CHARS} characters" in fake.calls[0][0]["content"] and "never empty" in fake.calls[0][0]["content"]

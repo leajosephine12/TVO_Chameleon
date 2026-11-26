@@ -1,4 +1,6 @@
-"""Model configuration, read from environment variables only (never hard-code keys).
+"""
+dyslexia_engine/model/config.py
+Model configuration, read from environment variables only (never hard-code keys).
 
 MODEL_MOCK=1        use the built-in mock, no network, no model needed
 MODEL_BASE_URL      OpenAI-compatible base URL (Ollama: http://localhost:11434/v1)
