@@ -1,4 +1,6 @@
-"""Safety checks on model output, plus helpers for handling untrusted page text.
+"""
+dyslexia_engine/model/guards.py
+Safety checks on model output, plus helpers for handling untrusted page text.
 
 Each `check_*` takes a list of Recommendation and returns a list of problem strings
 (empty list = fine). The runner feeds these problems back to the model on a retry.
@@ -14,6 +16,12 @@ from .schemas import Recommendation
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SENTENCE_START = re.compile(r"(?:^|[.!?]\s+)")
+
+# ---------- limits ----------
+MAX_ITEMS = 20
+MAX_CHANGES = 100
+MAX_ITEM_CHARS = 500
+MAX_LABEL_CHARS = 40
 
 
 # ---------- untrusted page text ----------
@@ -114,24 +122,31 @@ def check_original_is_quoted(recs: list[Recommendation], block_text: dict[str, s
 
 # ---------- meaning ----------
 
-def _mid_sentence_capitals(text: str) -> set[str]:
-    """Capitalised words that are not just the first word of a sentence (names, places)."""
+def _mid_sentence_capitals(text: str, skip_all_caps: bool = False) -> set[str]:
+    """Capitalised words that are not just the first word of a sentence (names, places).
+
+    ALL-CAPS words (NASA, UNESCO, TVO) count as names unless `skip_all_caps` is True. Set it only
+    when the all-caps rule (L2.1.5) is on: that rule rewrites emphasis such as DAMAGED, so those
+    words must be allowed to change.
+    """
     starts = {m.end() for m in _SENTENCE_START.finditer(text)}
     return {
         m.group()
         for m in re.finditer(r"[A-Z][a-zA-Z'-]*", text)
-        if m.start() not in starts and not (m.start() > 0 and text[m.start() - 1].isalnum())
+        if m.start() not in starts
+        and not (m.start() > 0 and text[m.start() - 1].isalnum())
+        and not (skip_all_caps and len(m.group()) > 1 and m.group().isupper())
     }
 
-
-def lost_facts(original: str, rewritten: str) -> list[str]:
+def lost_facts(original: str, rewritten: str, *, skip_all_caps: bool = False) -> list[str]:
     """Return the numbers and proper-name proxies lost by a rewrite."""
     missing_nums = sorted(numbers_in(original) - numbers_in(rewritten))
-    missing_names = sorted(w for w in _mid_sentence_capitals(original) if w not in rewritten)
+    missing_names = sorted(
+        w for w in _mid_sentence_capitals(original, skip_all_caps) if w not in rewritten
+    )
     return missing_nums + missing_names
 
-
-def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
+def check_meaning_preserved(recs: list[Recommendation], *, skip_all_caps: bool = False) -> list[str]:
     """Cheap proxy for 'same facts': digits and names in the original must survive in the suggestion.
 
     A model can still change meaning in ways this cannot see; the prompt forbids it and the UI
@@ -145,7 +160,7 @@ def check_meaning_preserved(recs: list[Recommendation]) -> list[str]:
         # as a stale-content precondition when the spec is applied.
         if r.type.upper() in {"J5", "J11", "J12", "J14", "S3"}:
             continue
-        missing = lost_facts(r.original, r.suggestion)
+        missing = lost_facts(r.original, r.suggestion, skip_all_caps=skip_all_caps)
         if missing:
             lost = ", ".join(missing)
             problems.append(f"{r.id}: suggestion lost facts from the original ({lost}). Keep every fact, number and name.")
@@ -177,7 +192,6 @@ def check_structural_fields(recs: list[Recommendation]) -> list[str]:
 
     Without this a card appears, the user accepts it, and only then does the spec reject a 58-character heading.
     """
-    from .adapted_ui_spec import MAX_ITEM_CHARS, MAX_LABEL_CHARS  # imported here: adapted_ui_spec imports this module
 
     problems = []
     for r in recs:

@@ -1,4 +1,6 @@
-"""Mock model: returns fixed, valid JSON so the UI and backend can be built without a model.
+"""
+dyslexia_engine/model/mock.py
+Mock model: returns fixed, valid JSON so the UI and backend can be built without a model.
 
 The recommendations match the sample TVO blocks (p-1, p-2) in the tests/samples. All numbers
 are FAKE sample data, not from a real analysis.
@@ -68,7 +70,12 @@ _ADAPTED_UI = {
     ]
 }
 
-MOCK_RESPONSES = {"text_recs": _TEXT, "layout_recs": _LAYOUT, "adapted_ui": _ADAPTED_UI}
+MOCK_RESPONSES = {
+    "text_recs": _TEXT,
+    "level2_text_recs": _TEXT,  # Level 2 uses the same text recommendations
+    "layout_recs": _LAYOUT,
+    "adapted_ui": _ADAPTED_UI,
+}
 
 
 def mock_response(task: str) -> str:

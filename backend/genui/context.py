@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 
 from accessibility_metrics.judgement import TEXT_JUDGEMENT
 from accessibility_metrics.thresholds import THRESHOLDS
-from app.adaptation_engine import _index_blocks
-from app.model.adapted_renderer import block_text
+from app.levels.level1_representation import _index_blocks #will be fixed
+from app.model.level3_future.adapted_renderer import block_text
 from bs4 import BeautifulSoup, Tag
 
 from .measure import PROSE_TAGS

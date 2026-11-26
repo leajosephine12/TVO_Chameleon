@@ -1,6 +1,5 @@
 import type { KeyboardEvent } from 'react';
 import {
-  appliedSuggestions,
   countByStatus,
   rankSuggestions,
   statusOf,
@@ -13,6 +12,7 @@ import {
 import { capitalize } from './labels';
 import { SuggestionDetail } from './SuggestionDetail';
 import { SuggestionList } from './SuggestionList';
+import { useSlidingHighlight } from './useSlidingHighlight';
 
 interface Props {
   session: ReviewSession;
@@ -49,7 +49,13 @@ export function ReviewPanel({
   const { versions, decisions } = session;
   // The previous page's suggestions are not shown while this page's are being worked out.
   const allSuggestions = isLoading ? [] : version.suggestions;
-  const applied = isLoading ? 0 : appliedSuggestions(session, version.id).length;
+  // Progress is for the whole version; the footer below counts only the open tab.
+  const versionCounts = countByStatus(allSuggestions, decisions);
+  const reviewed = versionCounts.approved + versionCounts.rejected;
+  const percentOf = (count: number) =>
+    allSuggestions.length === 0 ? '0%' : `${(count / allSuggestions.length) * 100}%`;
+  // The highlight slides under the chosen version, like the other switches in the app.
+  const versionSwitch = useSlidingHighlight(versions.indexOf(version));
   // Only the suggestions of the open lesson tab are listed, so the list stays short.
   const suggestions = rankSuggestions(suggestionsInGroup(allSuggestions, groups, activeGroupId));
   // The footer counts what the list shows, so with lesson tabs it is the open tab's suggestions.
@@ -75,32 +81,58 @@ export function ReviewPanel({
 
   return (
     <section className="review-panel" aria-label="Review">
-      <div className="version-tabs" role="tablist" aria-label="Page version" onKeyDown={onTabKey}>
-        {versions.map((v) => (
-          <button
-            key={v.id}
-            id={`tab-${v.id}`}
-            type="button"
-            role="tab"
-            aria-selected={v.id === version.id}
-            aria-controls="version-panel"
-            tabIndex={v.id === version.id ? 0 : -1}
-            onClick={() => onVersionChange(v.id)}
-          >
-            <strong>{v.name}</strong>
-            <small>
-              {isLoading ? 0 : countByStatus(v.suggestions, decisions).approved} of{' '}
-              {isLoading ? 0 : v.suggestions.length} approved
-            </small>
-          </button>
-        ))}
+      <div className="panel-header">
+        <div
+          className="version-switch"
+          role="tablist"
+          aria-label="Page version"
+          onKeyDown={onTabKey}
+          ref={versionSwitch.containerRef}
+        >
+          <span className="switch-highlight" aria-hidden="true" style={versionSwitch.highlightStyle} />
+          {versions.map((v) => (
+            <button
+              key={v.id}
+              id={`tab-${v.id}`}
+              type="button"
+              role="tab"
+              aria-selected={v.id === version.id}
+              aria-controls="version-panel"
+              tabIndex={v.id === version.id ? 0 : -1}
+              onClick={() => onVersionChange(v.id)}
+            >
+              {capitalize(v.shortName)}
+              <span className="version-count">{isLoading ? 0 : v.suggestions.length}</span>
+            </button>
+          ))}
+        </div>
+        {/* While a page loads or has no suggestions, the message in the list says so; a 0 of 0 bar adds nothing. */}
+        {allSuggestions.length > 0 && (
+          <div className="review-progress">
+            <div className="review-progress-text">
+              <strong>
+                {reviewed} of {allSuggestions.length} reviewed
+              </strong>
+              <span>
+                {versionCounts.approved} approved · {versionCounts.rejected} rejected
+              </span>
+            </div>
+            <div
+              className="review-progress-bar"
+              role="progressbar"
+              aria-label="Suggestions reviewed"
+              aria-valuemin={0}
+              aria-valuemax={allSuggestions.length}
+              aria-valuenow={reviewed}
+            >
+              <span className="bar-approved" style={{ width: percentOf(versionCounts.approved) }} />
+              <span className="bar-rejected" style={{ width: percentOf(versionCounts.rejected) }} />
+            </div>
+          </div>
+        )}
       </div>
       <div className="review-scroll" id="version-panel" role="tabpanel" aria-labelledby={`tab-${version.id}`}>
         <p className="version-note">{version.note}</p>
-        <p className="applied" role="status">
-          {capitalize(version.shortName)} version: {applied} approved {applied === 1 ? 'change' : 'changes'}{' '}
-          applied.
-        </p>
         {error && (
           <p className="error" role="alert">
             {error}

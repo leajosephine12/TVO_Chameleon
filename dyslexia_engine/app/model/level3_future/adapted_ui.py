@@ -12,11 +12,12 @@ import re
 from pydantic import ValidationError
 
 from .adapted_ui_spec import (
-    MAX_CHANGES, AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
+    AddButtonLabel, AddSectionHeading, AdaptedUIResult, AdaptedUISpec, ReplaceText,
     SetAltText, SetButtonLabel, SetLinkText, SetStyle, SkippedRecommendation,
     format_css, parse_css,
 )
-from .schemas import Recommendation
+from ..guards import MAX_CHANGES
+from ..schemas import Recommendation
 
 APPROVED = ("accepted", "edited")
 STRUCTURAL_METRIC_IDS = frozenset({"J5", "J11", "J12", "J14", "S3"})

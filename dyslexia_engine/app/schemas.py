@@ -1,4 +1,6 @@
-"""Shared data contracts.
+"""
+dyslexia_engine/app/schemas.py
+Shared data contracts.
 
 `Recommendation` is the shared format agreed with the team (Interface 3 / the
 "most important contract"). Everything the UI shows and every accept/deny/edit
@@ -28,6 +30,7 @@ class Guideline(BaseModel):
     title: str
     rule: str = Field(description="Plain-language rule from the research")
     params: dict = Field(default_factory=dict, description="Concrete values the engine applies")
+    source: str
 
 
 class GuidelinesResponse(BaseModel):
@@ -35,10 +38,10 @@ class GuidelinesResponse(BaseModel):
     guidelines: list[Guideline]
 
 
-# returns a list of recommendation
 class AnalyzeResult(BaseModel):
     level: int = 1
     recommendations: list[Recommendation]
+    findings: dict | None = None
 
 
 class AdaptResult(BaseModel):

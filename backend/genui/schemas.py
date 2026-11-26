@@ -6,7 +6,7 @@ block's full new text from that (so the model never has to retype the whole bloc
 """
 from typing import Annotated, Literal, Union, get_args
 
-from app.model.adapted_ui_spec import (
+from app.model.level3_future.adapted_ui_spec import (
     AddButtonLabel, AddHeadingBefore, AddSectionHeading, ExplainTerm, GroupMenuItems, PlainText, SetAltText,
     SetButtonLabel, SetLinkText, SetStyle, SplitIntoSteps, SplitList, SplitParagraph, StopAutoplay, TextToList,
 )
