@@ -103,27 +103,30 @@ export function ReviewPanel({
             </button>
           ))}
         </div>
-        <div className="review-progress">
-          <div className="review-progress-text">
-            <strong>
-              {reviewed} of {allSuggestions.length} reviewed
-            </strong>
-            <span>
-              {versionCounts.approved} approved · {versionCounts.rejected} rejected
-            </span>
+        {/* While a page loads or has no suggestions, the message in the list says so; a 0 of 0 bar adds nothing. */}
+        {allSuggestions.length > 0 && (
+          <div className="review-progress">
+            <div className="review-progress-text">
+              <strong>
+                {reviewed} of {allSuggestions.length} reviewed
+              </strong>
+              <span>
+                {versionCounts.approved} approved · {versionCounts.rejected} rejected
+              </span>
+            </div>
+            <div
+              className="review-progress-bar"
+              role="progressbar"
+              aria-label="Suggestions reviewed"
+              aria-valuemin={0}
+              aria-valuemax={allSuggestions.length}
+              aria-valuenow={reviewed}
+            >
+              <span className="bar-approved" style={{ width: percentOf(versionCounts.approved) }} />
+              <span className="bar-rejected" style={{ width: percentOf(versionCounts.rejected) }} />
+            </div>
           </div>
-          <div
-            className="review-progress-bar"
-            role="progressbar"
-            aria-label="Suggestions reviewed"
-            aria-valuemin={0}
-            aria-valuemax={allSuggestions.length}
-            aria-valuenow={reviewed}
-          >
-            <span className="bar-approved" style={{ width: percentOf(versionCounts.approved) }} />
-            <span className="bar-rejected" style={{ width: percentOf(versionCounts.rejected) }} />
-          </div>
-        </div>
+        )}
       </div>
       <div className="review-scroll" id="version-panel" role="tabpanel" aria-labelledby={`tab-${version.id}`}>
         <p className="version-note">{version.note}</p>
