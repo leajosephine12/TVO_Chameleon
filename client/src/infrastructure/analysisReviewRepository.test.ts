@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisGateway, ReviewRepository } from '../application/ports';
 import type { Recommendation } from '../domain/analysis';
 import type { ReviewedPage } from '../domain/review';
-import { createAnalysisReviewRepository } from './analysisReviewRepository';
+import {
+  ANALYSIS_UNAVAILABLE_NOTE,
+  LAYOUT_UNCHECKED_NOTE,
+  createAnalysisReviewRepository,
+  MODEL_UNAVAILABLE_NOTE,
+} from './analysisReviewRepository';
 
 const LESSON = `<body>
   <a href="#mindsOn" data-tab-trigger="mindsOn" data-tab-order="0">Minds On</a>
@@ -82,7 +87,15 @@ function backendReturning(...results: Array<Recommendation[] | Error>) {
   return { analyze, analyzeGeneral, gateway };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+// The repository logs the technical reason for a missing analysis; keep that out of the test output.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function serveLesson(html = LESSON) {
   vi.stubGlobal('fetch', async () => new Response(html));
@@ -158,5 +171,58 @@ describe('createAnalysisReviewRepository', () => {
     expect(analyze).toHaveBeenCalledTimes(2);
     // The general analysis did not fail, so its result (which can take the model minutes) is kept.
     expect(analyzeGeneral).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the reviewer in plain words when the language model was not reached, and keeps the details in the console', async () => {
+    serveLesson();
+    const { gateway, analyzeGeneral } = backendReturning([ITALIC_IN_ACTION_TAB]);
+    analyzeGeneral.mockResolvedValue({
+      recommendations: [],
+      modelError: 'MODEL_NAME is not set',
+      layoutError: null,
+    });
+
+    const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
+      capturedPage,
+    );
+
+    const note = session.versions.find((v) => v.id === 'general')?.note ?? '';
+    expect(note).toContain(MODEL_UNAVAILABLE_NOTE);
+    expect(note).not.toContain('MODEL_NAME');
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('MODEL_NAME is not set'));
+  });
+
+  it('says in plain words when the layout was not checked, and keeps the details in the console', async () => {
+    serveLesson();
+    const { gateway, analyzeGeneral } = backendReturning([ITALIC_IN_ACTION_TAB]);
+    analyzeGeneral.mockResolvedValue({
+      recommendations: [],
+      modelError: null,
+      layoutError: 'net::ERR_CONNECTION_REFUSED',
+    });
+
+    const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
+      capturedPage,
+    );
+
+    const note = session.versions.find((v) => v.id === 'general')?.note ?? '';
+    expect(note).toContain(LAYOUT_UNCHECKED_NOTE);
+    expect(note).not.toContain('ERR_CONNECTION_REFUSED');
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('ERR_CONNECTION_REFUSED'));
+  });
+
+  it('says on every version that the suggestions could not be loaded, without the technical reason', async () => {
+    serveLesson();
+    const { gateway, analyzeGeneral } = backendReturning(new Error('connect ECONNREFUSED 127.0.0.1:8001'));
+    analyzeGeneral.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:8001'));
+
+    const session = await createAnalysisReviewRepository(fallback, gateway, samplePage).loadSession(
+      capturedPage,
+    );
+
+    for (const version of session.versions) {
+      expect(version.note).toContain(ANALYSIS_UNAVAILABLE_NOTE);
+      expect(version.note).not.toContain('ECONNREFUSED');
+    }
   });
 });

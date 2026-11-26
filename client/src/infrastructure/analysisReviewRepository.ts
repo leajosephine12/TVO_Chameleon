@@ -9,6 +9,17 @@ import {
   suggestionsFromRecommendations,
 } from './recommendationSuggestions';
 
+/**
+ * What reviewers read when part of the analysis is missing. The technical reason (an unset model name, a
+ * refused connection) means nothing to a reviewer, so it goes to the browser console for developers instead.
+ */
+export const MODEL_UNAVAILABLE_NOTE =
+  'Wording suggestions are missing because the language model could not be reached. Only the measured layout fixes are shown.';
+export const LAYOUT_UNCHECKED_NOTE =
+  'Text size, line spacing and line length were not checked, because the backend could not open the page.';
+export const ANALYSIS_UNAVAILABLE_NOTE =
+  'Suggestions could not be loaded for this page because the analysis service did not answer. You can still view the page.';
+
 /** What the backend is given to build a page-wide rule's CSS. That CSS does not depend on the page. */
 const STUB_PAGE = '<html><head></head><body><p>Text</p></body></html>';
 
@@ -27,11 +38,10 @@ interface Found {
   failed?: boolean;
 }
 
-const notRun = (error: unknown): Found => ({
-  suggestions: [],
-  note: `The analysis could not be run: ${error instanceof Error ? error.message : 'unknown error'}`,
-  failed: true,
-});
+const notRun = (error: unknown): Found => {
+  console.warn('The analysis could not be run:', error);
+  return { suggestions: [], note: ANALYSIS_UNAVAILABLE_NOTE, failed: true };
+};
 
 /** What a page's suggestions need besides the change itself: the page they are on and its lesson tabs. */
 interface Placement {
@@ -111,12 +121,9 @@ export function createAnalysisReviewRepository(
     const { recommendations, modelError, layoutError } = await analysis.analyzeGeneral(html, absoluteUrl);
 
     const suggestions = suggestionsFromGeneralRecommendations(recommendations, indexBlocks(html));
-    const notes = [
-      modelError &&
-        `The language model step failed (${modelError}), so only the measured layout fixes are shown.`,
-      layoutError &&
-        `Text size, line spacing and line length were not checked, because the backend could not open the page (${layoutError}).`,
-    ];
+    if (modelError) console.warn(`Language model step failed: ${modelError}`);
+    if (layoutError) console.warn(`Layout check could not open the page: ${layoutError}`);
+    const notes = [modelError && MODEL_UNAVAILABLE_NOTE, layoutError && LAYOUT_UNCHECKED_NOTE];
     return {
       suggestions: placed(suggestions, recommendations, placement, `${GENERAL_VERSION_ID}-`),
       note: notes.filter(Boolean).join(' '),

@@ -49,7 +49,6 @@ export function ReviewPanel({
   const { versions, decisions } = session;
   // The previous page's suggestions are not shown while this page's are being worked out.
   const allSuggestions = isLoading ? [] : version.suggestions;
-  const counts = countByStatus(allSuggestions, decisions);
   // Progress is for the whole version; the footer below counts only the open tab.
   const versionCounts = countByStatus(allSuggestions, decisions);
   const reviewed = versionCounts.approved + versionCounts.rejected;
@@ -59,6 +58,10 @@ export function ReviewPanel({
   const versionSwitch = useSlidingHighlight(versions.indexOf(version));
   // Only the suggestions of the open lesson tab are listed, so the list stays short.
   const suggestions = rankSuggestions(suggestionsInGroup(allSuggestions, groups, activeGroupId));
+  // The footer counts what the list shows, so with lesson tabs it is the open tab's suggestions.
+  const counts = countByStatus(suggestions, decisions);
+  // While a new page loads, the open tab can still be the previous page's, so its name is not shown.
+  const activeGroup = isLoading ? undefined : groups.find((group) => group.id === activeGroupId);
   const selected = suggestions.find((s) => s.id === selectedId);
   // Opens the suggestion `by` places from the open one, wrapping around at either end of the list.
   // With none open, forward opens the first and back opens the last.
@@ -180,6 +183,7 @@ export function ReviewPanel({
         )}
       </div>
       <footer className="review-footer">
+        {activeGroup && <span className="footer-scope">{activeGroup.label}:</span>}
         <span>
           Approved <b>{counts.approved}</b>
         </span>

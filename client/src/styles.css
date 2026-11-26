@@ -835,6 +835,12 @@ p {
   color: var(--ink);
 }
 
+/* Names the lesson tab the counts are for. */
+.footer-scope {
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .visitor-button {
   min-height: 44px;
   margin-left: auto;
