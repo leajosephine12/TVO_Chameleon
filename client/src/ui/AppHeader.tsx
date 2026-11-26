@@ -12,7 +12,6 @@ export function AppHeader({ viewAs, onViewAsChange }: Props) {
     <header className="app-header">
       <span className="logo" aria-hidden="true" />
       <h1>TVO Chameleon</h1>
-      <span className="pill">Concept prototype</span>
       <div className="view-as">
         <span id="view-as-label">View as</span>
         <SegmentedControl

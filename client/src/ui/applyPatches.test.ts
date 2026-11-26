@@ -32,6 +32,21 @@ describe('replaceText', () => {
     expect(doc.querySelector('p')?.textContent).toBe('Short.');
   });
 
+  it('finds the text in the second half of a paragraph that an approved change split in two', () => {
+    const doc = pageWith('<p data-cid="a">First idea. A long sentence.</p>');
+
+    apply(doc, [
+      {
+        kind: 'replaceElement',
+        selector: '[data-cid="a"]',
+        html: '<p data-cid="a">First idea.</p><p data-cid="a">A long sentence.</p>',
+      },
+      { kind: 'replaceText', selector: '[data-cid="a"]', find: 'A long sentence.', text: 'Short.' },
+    ]);
+
+    expect(doc.body.innerHTML).toContain('<p data-cid="a">First idea.</p><p data-cid="a">Short.</p>');
+  });
+
   it('cannot match text that a link splits, which is why such suggestions are not offered', () => {
     const doc = pageWith('<p data-cid="a">A long <a href="#">linked</a> sentence.</p>');
 
@@ -76,5 +91,39 @@ describe('setStyle', () => {
 
     apply(doc, []);
     expect(p()?.getAttribute('style')).toBe('text-decoration: underline;');
+  });
+});
+
+describe('highlight', () => {
+  const outlined = (doc: Document) => Array.from(doc.querySelectorAll('[data-chameleon-highlight]'));
+
+  it('outlines every element the selector matches', () => {
+    const doc = pageWith('<h2 class="s">One</h2><p>Text</p><h2 class="s">Two</h2>');
+
+    applyPatches(doc, [], '.s');
+
+    expect(outlined(doc).map((el) => el.textContent)).toEqual(['One', 'Two']);
+  });
+
+  it('outlines the new element when an approved change replaces the highlighted one', () => {
+    const doc = pageWith('<p><i data-cid="a">Key idea</i></p>');
+    const patches: Patch[] = [
+      { kind: 'replaceElement', selector: '[data-cid="a"]', html: '<strong>Key idea</strong>' },
+    ];
+
+    applyPatches(doc, patches, '[data-cid="a"]');
+
+    expect(outlined(doc).map((el) => el.outerHTML)).toEqual([
+      '<strong data-chameleon-highlight="">Key idea</strong>',
+    ]);
+  });
+
+  it('removes the outline when a different suggestion is selected', () => {
+    const doc = pageWith('<h2 id="a">One</h2><h2 id="b">Two</h2>');
+
+    applyPatches(doc, [], '#a');
+    applyPatches(doc, [], '#b');
+
+    expect(outlined(doc).map((el) => el.id)).toEqual(['b']);
   });
 });

@@ -82,7 +82,8 @@ export const sampleVersions: ReviewVersion[] = [
         whatWouldChange: 'Make each heading level clearly different in size and weight.',
         before: 'Headings differ by only a few pixels and share one weight.',
         after: 'Section headings are larger and bold, and sub-section headings are clearly smaller.',
-        targetSelector: '.lesson-body h2',
+        // Both heading levels change, so both are outlined.
+        targetSelector: '.lesson-body h2, .lesson-body h3',
         patches: [
           {
             kind: 'css',
