@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { statusOf, type Decisions, type Suggestion } from '../domain/review';
-import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL } from './labels';
+import { PRIORITY_LABEL, STATUS_LABEL } from './labels';
 
 interface Props {
   suggestions: Suggestion[];
@@ -13,6 +13,18 @@ interface Props {
   renderDetail: (suggestion: Suggestion) => ReactNode;
 }
 
+/**
+ * Where a suggestion applies, as the row shows it: a quote of the text it changes when there is one, since
+ * many rows share a title such as "Italic text"; otherwise where on the page it is.
+ */
+function whereOf(suggestion: Suggestion): string {
+  return suggestion.excerpt ? `“${suggestion.excerpt}”` : suggestion.location;
+}
+
+/**
+ * The suggestions as numbered rows. Each row shows what the suggestion is, where it applies, how important
+ * it is and whether it was decided; the open row has its details underneath.
+ */
 export function SuggestionList({ suggestions, decisions, selectedId, onSelect, renderDetail }: Props) {
   const listRef = useRef<HTMLOListElement>(null);
 
@@ -27,7 +39,7 @@ export function SuggestionList({ suggestions, decisions, selectedId, onSelect, r
         const status = statusOf(decisions, suggestion.id);
         const isSelected = suggestion.id === selectedId;
         return (
-          <li key={suggestion.id}>
+          <li key={suggestion.id} className={isSelected ? 'suggestion-item-open' : undefined}>
             <button
               type="button"
               className="suggestion-row"
@@ -41,9 +53,8 @@ export function SuggestionList({ suggestions, decisions, selectedId, onSelect, r
               <span className="suggestion-row-text">
                 <strong>{suggestion.title}</strong>
                 <small>
-                  <i className={`dot dot-${suggestion.category}`} aria-hidden="true" />
-                  {CATEGORY_LABEL[suggestion.category]}
-                  <span>{PRIORITY_LABEL[suggestion.priority]}</span>
+                  <span className="row-where">{whereOf(suggestion)}</span>
+                  <span className="row-priority">{PRIORITY_LABEL[suggestion.priority]} priority</span>
                 </small>
               </span>
               <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>

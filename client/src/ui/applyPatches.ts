@@ -1,9 +1,12 @@
 import type { Patch } from '../domain/review';
 
-const MARKER = 'data-chameleon';
+/** Set on everything the review adds to the page, so all of it can be taken out again. */
+export const MARKER = 'data-chameleon';
 /** Set on every element the selected suggestion is about, so each one gets the same red outline. */
-const HIGHLIGHT_ATTR = 'data-chameleon-highlight';
-const HIGHLIGHT_CSS = `[${HIGHLIGHT_ATTR}] { outline: 3px solid #b93a0f !important; outline-offset: 2px !important; }`;
+export const HIGHLIGHT_ATTR = 'data-chameleon-highlight';
+/** The outline's red. It matches --accent in styles.css, which the panel uses for the open suggestion. */
+export const HIGHLIGHT_COLOUR = '#b93a0f';
+const HIGHLIGHT_CSS = `[${HIGHLIGHT_ATTR}] { outline: 3px solid ${HIGHLIGHT_COLOUR} !important; outline-offset: 2px !important; }`;
 
 type Undo = () => void;
 const undos = new WeakMap<Document, Undo[]>();

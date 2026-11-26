@@ -6,15 +6,17 @@ import { pageFromCapture, type PageCapture } from '../domain/capture';
 import {
   appliedSuggestions,
   groupSuggestions,
+  rankSuggestions,
   suggestionsInGroup,
   type ReviewedPage,
 } from '../domain/review';
 import { AppHeader, type ViewAs } from './AppHeader';
-import { CaptureBar } from './CaptureBar';
-import { capitalize } from './labels';
+import { CaptureMenu } from './CaptureMenu';
+import { PagePicker } from './PagePicker';
 import { PagePreview } from './PagePreview';
 import { ReviewPanel } from './ReviewPanel';
 import { SegmentedControl } from './SegmentedControl';
+import { VisitorControls } from './VisitorControls';
 
 type PreviewMode = 'approved' | 'original';
 
@@ -104,46 +106,49 @@ export function ReviewWorkspace({ repository, captureGateway, samplePage }: Prop
 
   // Nothing is open until the reviewer picks a suggestion, so a new page opens on the whole list.
   const selectedId = selectedIds[version.id] ?? null;
-  const selected = isLoading
-    ? undefined
-    : suggestionsInGroup(version.suggestions, groups, activeGroupId).find((s) => s.id === selectedId);
+  // The list as the panel shows it, so the tag on the page carries the same number as the suggestion's row.
+  const listedSuggestions = rankSuggestions(suggestionsInGroup(version.suggestions, groups, activeGroupId));
+  const selected = isLoading ? undefined : listedSuggestions.find((s) => s.id === selectedId);
+  const highlightLabel = selected ? `${listedSuggestions.indexOf(selected) + 1} · ${selected.title}` : null;
   // The lesson switches to the tab the reviewer is looking at. The whole-page group is not a tab.
   const previewTabId = session.lessonTabs.some((tab) => tab.id === activeGroupId) ? activeGroupId : null;
 
   return (
     <div className="app">
-      <AppHeader viewAs={viewAs} onViewAsChange={setViewAs} />
-      {!isVisitor && (
-        <CaptureBar
-          samplePage={samplePage}
-          page={page}
-          captures={captures}
-          serverReachable={serverReachable}
-          progress={progress}
-          onCapture={startCaptureFromHere}
-          onPageChange={setPage}
-          capturedPageToOpen={capturedPageToOpen?.url === page.url ? null : capturedPageToOpen}
-        />
-      )}
+      <AppHeader viewAs={viewAs} onViewAsChange={setViewAs}>
+        {isVisitor ? (
+          <span className="visitor-note">Previewing what visitors see</span>
+        ) : (
+          <>
+            <PagePicker samplePage={samplePage} page={page} captures={captures} onPageChange={setPage} />
+            <CaptureMenu
+              serverReachable={serverReachable}
+              progress={progress}
+              onCapture={startCaptureFromHere}
+              onPageChange={setPage}
+              capturedPageToOpen={capturedPageToOpen?.url === page.url ? null : capturedPageToOpen}
+            />
+          </>
+        )}
+      </AppHeader>
       <main className={isVisitor ? 'workspace workspace-visitor' : 'workspace'}>
         <PagePreview
           url={page.url}
-          addressLabel={`${page.label} · ${version.shortName} version`}
+          addressLabel={isVisitor ? page.label : `${page.label} · ${version.shortName} version`}
           patches={patches}
           targetFrame={session.targetFrame}
           highlightSelector={isVisitor ? null : (selected?.targetSelector ?? null)}
+          highlightLabel={isVisitor ? null : highlightLabel}
           tabId={previewTabId}
           onLessonTabChange={onLessonTabChange}
           controls={
             isVisitor ? (
-              <SegmentedControl
-                label="Page version"
-                value={version.id}
-                onChange={setActiveVersionId}
-                options={session.versions.map((v) => ({
-                  value: v.id,
-                  label: capitalize(v.shortName),
-                }))}
+              <VisitorControls
+                versions={session.versions}
+                versionId={version.id}
+                onVersionChange={setActiveVersionId}
+                appliedCount={appliedSuggestions(session, version.id).length}
+                onBackToReview={() => setViewAs('team')}
               />
             ) : (
               <SegmentedControl

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Patch } from '../domain/review';
 import { applyPatches } from './applyPatches';
 import { fitEmbeddedFrames } from './fitEmbeddedFrames';
+import { placeOutlineTag } from './outlineTag';
 
 interface Props {
   url: string;
@@ -10,6 +11,8 @@ interface Props {
   /** The `src` of the frame the patches apply to, or null to apply them to the page itself. */
   targetFrame: string | null;
   highlightSelector: string | null;
+  /** The tag shown on the outline, such as "2 · Italic text", or null for none. */
+  highlightLabel: string | null;
   /** The lesson tab to show, or null to leave the lesson on the tab it is on. */
   tabId: string | null;
   /** Called with the id a tab link inside the lesson switched to, such as "action". */
@@ -45,6 +48,7 @@ export function PagePreview({
   patches,
   targetFrame,
   highlightSelector,
+  highlightLabel,
   tabId,
   onLessonTabChange,
   controls,
@@ -114,6 +118,15 @@ export function PagePreview({
     if (targetDoc) applyPatches(targetDoc, patches, highlightSelector);
   }, [targetDoc, patches, highlightSelector]);
 
+  // After the patches, because applying them again takes the tag away with everything else the review added.
+  useEffect(
+    () =>
+      targetDoc && highlightSelector && highlightLabel
+        ? placeOutlineTag(targetDoc, highlightLabel)
+        : undefined,
+    [targetDoc, patches, highlightSelector, highlightLabel],
+  );
+
   // Embedded lessons are sized to their content at the width shown here, so none of it is cut off.
   useEffect(() => (doc ? fitEmbeddedFrames(doc) : undefined), [doc]);
 
@@ -129,7 +142,21 @@ export function PagePreview({
         {controls}
         {canFullScreen && (
           <button type="button" className="fullscreen-button" onClick={toggleFullScreen}>
-            {isFullScreen ? 'Exit full screen' : 'Full screen'}
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+            {/* On phones only the icon shows; the words stay for screen readers. */}
+            <span className="label-wide-only">{isFullScreen ? 'Exit full screen' : 'Full screen'}</span>
           </button>
         )}
       </div>

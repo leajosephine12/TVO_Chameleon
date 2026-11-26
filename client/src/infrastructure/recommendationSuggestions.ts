@@ -134,6 +134,7 @@ function toSuggestion(rec: Recommendation, patch: Patch, block: PageBlock | unde
     // A type with no title yet gets a neutral one rather than its internal code, such as "J5".
     title: TITLES[rec.type] ?? 'Suggested change',
     location: isPageWide ? 'Whole page' : describeElement(block?.tag ?? rec.block_id),
+    excerpt: isPageWide ? undefined : block?.text || undefined,
     summary: rec.rationale,
     category: 'reading',
     priority: rec.severity as Priority,
