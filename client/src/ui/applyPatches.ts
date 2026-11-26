@@ -80,13 +80,16 @@ export function applyPatches(doc: Document, patches: Patch[], highlightSelector:
       css.push(patch.css);
       return;
     }
-    const target = doc.querySelector(patch.selector);
+    // An approved change can split a block into several elements that all keep its selector (a paragraph
+    // split in two), so text is looked for in each of them, not only the first.
+    const targets = Array.from(doc.querySelectorAll(patch.selector));
+    const target = targets[0];
     if (!target) {
       console.warn(`Patch skipped: nothing on the page matches "${patch.selector}"`);
       return;
     }
     if (patch.kind === 'replaceText') {
-      if (!replaceText(target, patch.find, patch.text)) {
+      if (!targets.some((el) => replaceText(el, patch.find, patch.text))) {
         console.warn(`Patch skipped: "${patch.selector}" does not contain the text to replace`);
       }
       return;
