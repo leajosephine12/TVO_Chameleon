@@ -91,16 +91,20 @@ export function CaptureMenu({
   const [isOpen, setIsOpen] = useState(false);
   const [url, setUrl] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
   const running = progress.status === 'running';
 
-  // Like any pop-up, it closes on Escape or on a click anywhere outside it.
+  // Like any pop-up, it closes on Escape or on a click anywhere outside it. Escape puts focus back on the
+  // button that opened it, so a keyboard user is not left on a field that has just disappeared.
   useEffect(() => {
     if (!isOpen) return undefined;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) setIsOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      openButtonRef.current?.focus();
     };
     document.addEventListener('mousedown', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
@@ -119,6 +123,7 @@ export function CaptureMenu({
     <div className="capture-menu" ref={menuRef}>
       <button
         type="button"
+        ref={openButtonRef}
         className="capture-open-button"
         aria-expanded={isOpen}
         aria-controls="capture-popover"
